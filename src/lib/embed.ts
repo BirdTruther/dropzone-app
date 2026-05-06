@@ -76,7 +76,6 @@ export function getEmbed(url: string): EmbedInfo {
     }
 
     // Facebook videos
-    // Handles: facebook.com/watch?v=ID, facebook.com/*/videos/ID, fb.watch/slug
     if (host === 'facebook.com' || host === 'fb.watch' || host === 'm.facebook.com') {
       const isVideo =
         u.searchParams.has('v') ||
@@ -84,10 +83,12 @@ export function getEmbed(url: string): EmbedInfo {
         u.pathname.includes('/video/') ||
         host === 'fb.watch';
       if (isVideo) {
+        const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ?? '';
         const encodedUrl = encodeURIComponent(url);
+        const appIdParam = appId ? `&appId=${appId}` : '';
         return {
           type: 'facebook',
-          embedUrl: `https://www.facebook.com/plugins/video.php?href=${encodedUrl}&show_text=false&width=560&autoplay=false`,
+          embedUrl: `https://www.facebook.com/plugins/video.php?href=${encodedUrl}&show_text=false&width=560&autoplay=false${appIdParam}`,
         };
       }
     }
