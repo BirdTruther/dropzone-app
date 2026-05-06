@@ -17,7 +17,7 @@ async function purgeExpired() {
   });
   for (const post of expired) {
     if (post.uploadUrl) {
-      try { await unlink(join(process.cwd(), 'public', post.uploadUrl)); } catch { /* already gone */ }
+      try { await unlink(join(process.cwd(), 'public', 'uploads', post.uploadUrl.replace('/api/uploads/', ''))); } catch { }
     }
     await prisma.post.delete({ where: { id: post.id } });
   }
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const isImage = ALLOWED_IMAGE.includes(file.type);
   if (!isVideo && !isImage) return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
 
-  // Check volume — if full, auto-purge expired files first then re-check
+  // Check volume — auto-purge expired files if full
   let currentSize = await getUploadsSize();
   if (currentSize + file.size > MAX_VOLUME_SIZE) {
     await purgeExpired();
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     data: {
       url: '',
       note: note || null,
-      uploadUrl: `/uploads/${filename}`,
+      uploadUrl: `/api/uploads/${filename}`,
       uploadType: isVideo ? 'video' : 'image',
       expiresAt,
       authorId: user.id,
