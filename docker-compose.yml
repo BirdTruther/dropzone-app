@@ -18,19 +18,16 @@ services:
     restart: unless-stopped
     ports:
       - "8742:3000"
-    environment:
-      DATABASE_URL: postgresql://dropzone:dropzone_pass@db:5432/dropzone
-      NEXTAUTH_SECRET: CHANGE_ME_TO_A_RANDOM_32_CHAR_STRING
-      NEXTAUTH_URL: http://localhost:8742
-      NODE_ENV: production
+    env_file:
+      - .env
     depends_on:
       - db
 
   migrate:
     build: .
     container_name: dropzone-migrate
-    environment:
-      DATABASE_URL: postgresql://dropzone:dropzone_pass@db:5432/dropzone
+    env_file:
+      - .env
     depends_on:
       - db
     entrypoint: ["/bin/sh", "-c"]
