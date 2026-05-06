@@ -5,8 +5,8 @@ import { prisma } from '@/lib/prisma';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import { MAX_FILE_SIZE, MAX_VOLUME_SIZE, getUploadsSize } from '@/lib/storage';
 
-const MAX_SIZE = 100 * 1024 * 1024; // 100MB
 const ALLOWED_VIDEO = ['video/mp4', 'video/quicktime', 'video/webm'];
 const ALLOWED_IMAGE = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const EXPIRE_DAYS = 7;
@@ -18,7 +18,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const user = await prisma.user.findUnique({ where: { email: session.user.email } });
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-  // Check membership
   const membership = await prisma.groupMember.findUnique({
     where: { userId_groupId: { userId: user.id, groupId: params.id } },
   });
@@ -29,11 +28,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const note = (formData.get('note') as string | null)?.trim() ?? undefined;
 
   if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-  if (file.size > MAX_SIZE) return NextResponse.json({ error: 'File too large (max 100MB)' }, { status: 400 });
+  if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'File too large (max 100MB)' }, { status: 400 });
 
   const isVideo = ALLOWED_VIDEO.includes(file.type);
   const isImage = ALLOWED_IMAGE.includes(file.type);
   if (!isVideo && !isImage) return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
+
+  // Check volume cap
+  const currentSize = await getUploadsSize();
+  if (currentSize + file.size > MAX_VOLUME_SIZE) {
+    return NextResponse.json({
+      error: `Storage full — uploads are limited to 20GB total. Try again after some files expire.`,
+    }, { status: 507 });
+  }
 
   const ext = file.name.split('.').pop() ?? (isVideo ? 'mp4' : 'jpg');
   const filename = `${randomUUID()}.${ext}`;
