@@ -19,11 +19,11 @@ services:
     container_name: dropzone-app
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "8742:3000"
     environment:
       DATABASE_URL: postgresql://dropzone:dropzone_pass@db:5432/dropzone
       NEXTAUTH_SECRET: CHANGE_ME_TO_A_RANDOM_32_CHAR_STRING
-      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_URL: http://localhost:8742
       NODE_ENV: production
     depends_on:
       - db
