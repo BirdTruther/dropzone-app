@@ -7,32 +7,20 @@ interface Props {
 }
 
 function TikTokEmbed({ url }: { url: string }) {
-  const [html, setHtml] = useState<string | null>(null);
+  const [videoId, setVideoId] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch(`/api/tiktok-oembed?url=${encodeURIComponent(url)}`)
       .then(r => r.ok ? r.json() : Promise.reject())
-      .then(data => setHtml(data.html ?? null))
+      .then(data => {
+        if (data.videoId) setVideoId(data.videoId);
+        else setFailed(true);
+      })
       .catch(() => setFailed(true));
   }, [url]);
 
-  useEffect(() => {
-    if (!html || !containerRef.current) return;
-    // Inject TikTok embed script after HTML is set
-    const existing = document.getElementById('tiktok-embed-script');
-    if (existing) {
-      (window as any).TikTok?.reload?.();
-    } else {
-      const script = document.createElement('script');
-      script.id = 'tiktok-embed-script';
-      script.src = 'https://www.tiktok.com/embed.js';
-      script.async = true;
-      document.body.appendChild(script);
-    }
-  }, [html]);
-
+  // Fallback link card
   if (failed) {
     return (
       <a href={url} target="_blank" rel="noopener noreferrer"
@@ -43,17 +31,36 @@ function TikTokEmbed({ url }: { url: string }) {
     );
   }
 
-  if (!html) {
+  // Loading skeleton
+  if (!videoId) {
     return (
-      <div style={{ height: 80, borderRadius: 8, background: 'var(--color-surface-2)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+      <div style={{ height: 560, borderRadius: 8, background: 'var(--color-surface-2)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
         Loading TikTok...
       </div>
     );
   }
 
+  // Clean direct iframe — no embed.js, no white bg, no end suggestions
   return (
-    <div ref={containerRef} style={{ marginBottom: '0.5rem' }}
-      dangerouslySetInnerHTML={{ __html: html }} />
+    <div style={{
+      position: 'relative',
+      width: '100%',
+      maxWidth: 340,
+      margin: '0 auto 0.5rem',
+      borderRadius: 12,
+      overflow: 'hidden',
+      background: '#000',
+      aspectRatio: '9/16',
+    }}>
+      <iframe
+        src={`https://www.tiktok.com/embed/v2/${videoId}?autoplay=0`}
+        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
+        allowFullScreen
+        allow="autoplay; encrypted-media"
+        title="TikTok video"
+        loading="lazy"
+      />
+    </div>
   );
 }
 
@@ -78,9 +85,7 @@ export default function PostEmbed({ url }: Props) {
 
   if (embed.type === 'none') return null;
 
-  if (embed.type === 'tiktok') {
-    return <TikTokEmbed url={url} />;
-  }
+  if (embed.type === 'tiktok') return <TikTokEmbed url={url} />;
 
   if (embed.type === 'twitter') {
     return (
