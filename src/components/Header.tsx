@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 
 export default function Header() {
   const { data: session } = useSession();
+  const user = session?.user as { name?: string | null; email?: string | null; image?: string | null } | undefined;
 
   return (
     <header style={{
@@ -33,7 +34,7 @@ export default function Header() {
 
         {/* Right side — profile */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          {session?.user ? (
+          {user ? (
             <Link
               href="/profile"
               style={{
@@ -46,10 +47,10 @@ export default function Header() {
                 fontWeight: 500,
               }}
             >
-              {session.user.image ? (
+              {user.image ? (
                 <img
-                  src={session.user.image}
-                  alt={session.user.name ?? 'Profile'}
+                  src={user.image}
+                  alt={user.name ?? 'Profile'}
                   width={32}
                   height={32}
                   style={{ borderRadius: '50%', objectFit: 'cover' }}
@@ -67,10 +68,10 @@ export default function Header() {
                   fontWeight: 600,
                   color: '#374151',
                 }}>
-                  {(session.user.name ?? 'U')[0].toUpperCase()}
+                  {(user.name ?? 'U')[0].toUpperCase()}
                 </span>
               )}
-              <span>{session.user.name ?? 'Profile'}</span>
+              <span>{user.name ?? 'Profile'}</span>
             </Link>
           ) : (
             <Link
