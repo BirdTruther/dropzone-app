@@ -30,15 +30,14 @@ export function getEmbed(url: string): EmbedInfo {
       }
     }
 
-    // TikTok
-    if (host === 'tiktok.com' || host === 'vm.tiktok.com') {
-      const match = u.pathname.match(/\/video\/(\d+)/);
-      if (match) {
-        return {
-          type: 'tiktok',
-          embedUrl: `https://www.tiktok.com/embed/v2/${match[1]}`,
-        };
-      }
+    // TikTok — all formats handled via oEmbed API in PostEmbed component
+    if (
+      host === 'tiktok.com' ||
+      host === 'vm.tiktok.com' ||
+      host === 'vt.tiktok.com' ||
+      host === 'm.tiktok.com'
+    ) {
+      return { type: 'tiktok' };
     }
 
     // Spotify
