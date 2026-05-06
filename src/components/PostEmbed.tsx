@@ -12,7 +12,6 @@ export default function PostEmbed({ url }: Props) {
 
   useEffect(() => {
     if (embed.type === 'twitter' && twitterRef.current) {
-      // Load Twitter widget script if not already loaded
       if (!(window as any).twttr) {
         const script = document.createElement('script');
         script.src = 'https://platform.twitter.com/widgets.js';
@@ -29,7 +28,6 @@ export default function PostEmbed({ url }: Props) {
   if (embed.type === 'none') return null;
 
   if (embed.type === 'twitter') {
-    const tweetId = url.match(/\/status\/(\d+)/)?.[1];
     return (
       <div ref={twitterRef} style={{ marginBottom: '0.5rem' }}>
         <blockquote className="twitter-tweet" data-dnt="true">
@@ -69,7 +67,22 @@ export default function PostEmbed({ url }: Props) {
     );
   }
 
-  // YouTube, Twitch — standard 16:9 iframe
+  if (embed.type === 'facebook') {
+    return (
+      <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: 8, marginBottom: '0.5rem', background: '#000' }}>
+        <iframe
+          src={embed.embedUrl}
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
+          allowFullScreen
+          allow="autoplay; clipboard-write; encrypted-media; picture-in-picture"
+          loading="lazy"
+          title="Facebook video"
+        />
+      </div>
+    );
+  }
+
+  // YouTube, Twitch — standard 16:9
   return (
     <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: 8, marginBottom: '0.5rem' }}>
       <iframe

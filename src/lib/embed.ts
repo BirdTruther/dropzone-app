@@ -1,9 +1,8 @@
-export type EmbedType = 'youtube' | 'tiktok' | 'spotify' | 'twitter' | 'twitch' | 'none';
+export type EmbedType = 'youtube' | 'tiktok' | 'spotify' | 'twitter' | 'twitch' | 'facebook' | 'none';
 
 export interface EmbedInfo {
   type: EmbedType;
   embedUrl?: string;
-  html?: string;
 }
 
 export function getEmbed(url: string): EmbedInfo {
@@ -44,41 +43,51 @@ export function getEmbed(url: string): EmbedInfo {
 
     // Spotify
     if (host === 'open.spotify.com') {
-      const path = u.pathname; // e.g. /track/xxx or /playlist/xxx
       return {
         type: 'spotify',
-        embedUrl: `https://open.spotify.com/embed${path}?utm_source=generator`,
+        embedUrl: `https://open.spotify.com/embed${u.pathname}?utm_source=generator`,
       };
     }
 
     // Twitter / X
     if (host === 'twitter.com' || host === 'x.com') {
-      const tweetMatch = u.pathname.match(/\/status\/(\d+)/);
-      if (tweetMatch) {
+      if (u.pathname.match(/\/status\/\d+/)) {
+        return { type: 'twitter', embedUrl: url };
+      }
+    }
+
+    // Twitch
+    if (host === 'twitch.tv' || host === 'clips.twitch.tv') {
+      const clipMatch = u.pathname.match(/\/clip\/([\w-]+)/) ||
+        (host === 'clips.twitch.tv' ? [null, u.pathname.slice(1)] : null);
+      if (clipMatch) {
         return {
-          type: 'twitter',
-          // We'll render this via Twitter's widget script
-          embedUrl: url,
+          type: 'twitch',
+          embedUrl: `https://clips.twitch.tv/embed?clip=${clipMatch[1]}&parent=${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}&autoplay=false`,
+        };
+      }
+      const channelMatch = u.pathname.match(/^\/([\w]+)$/);
+      if (channelMatch) {
+        return {
+          type: 'twitch',
+          embedUrl: `https://player.twitch.tv/?channel=${channelMatch[1]}&parent=${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}&autoplay=false`,
         };
       }
     }
 
-    // Twitch clips
-    if (host === 'twitch.tv' || host === 'clips.twitch.tv') {
-      const clipMatch = u.pathname.match(/\/clip\/([\w-]+)/) || (host === 'clips.twitch.tv' && [null, u.pathname.slice(1)]);
-      const clipSlug = clipMatch ? clipMatch[1] : null;
-      if (clipSlug) {
+    // Facebook videos
+    // Handles: facebook.com/watch?v=ID, facebook.com/*/videos/ID, fb.watch/slug
+    if (host === 'facebook.com' || host === 'fb.watch' || host === 'm.facebook.com') {
+      const isVideo =
+        u.searchParams.has('v') ||
+        u.pathname.includes('/videos/') ||
+        u.pathname.includes('/video/') ||
+        host === 'fb.watch';
+      if (isVideo) {
+        const encodedUrl = encodeURIComponent(url);
         return {
-          type: 'twitch',
-          embedUrl: `https://clips.twitch.tv/embed?clip=${clipSlug}&parent=${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}&autoplay=false`,
-        };
-      }
-      // Twitch live channel
-      const channelMatch = u.pathname.match(/^\/([\w]+)$/);
-      if (channelMatch && !u.pathname.includes('/')) {
-        return {
-          type: 'twitch',
-          embedUrl: `https://player.twitch.tv/?channel=${channelMatch[1]}&parent=${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}&autoplay=false`,
+          type: 'facebook',
+          embedUrl: `https://www.facebook.com/plugins/video.php?href=${encodedUrl}&show_text=false&width=560&autoplay=false`,
         };
       }
     }
