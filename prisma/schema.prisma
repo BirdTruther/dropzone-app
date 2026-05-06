@@ -48,12 +48,15 @@ model GroupMember {
 
 model Post {
   id          String    @id @default(cuid())
-  url         String
+  url         String    @default("")
   title       String?
   description String?
   image       String?
   siteName    String?
   note        String?
+  uploadUrl   String?   // path to uploaded file e.g. /uploads/filename.mp4
+  uploadType  String?   // 'video' or 'image'
+  expiresAt   DateTime? // auto-delete after this date
   createdAt   DateTime  @default(now())
 
   author      User   @relation(fields: [authorId], references: [id], onDelete: Cascade)

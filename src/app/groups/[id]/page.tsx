@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
@@ -9,7 +9,7 @@ import { getEmbed } from '@/lib/embed';
 
 interface Author { id: string; name: string; avatar?: string; }
 interface Reaction { id: string; emoji: string; userId: string; }
-interface Post { id: string; url: string; title?: string; description?: string; image?: string; siteName?: string; note?: string; createdAt: string; author: Author; reactions: Reaction[]; }
+interface Post { id: string; url: string; title?: string; description?: string; image?: string; siteName?: string; note?: string; uploadUrl?: string; uploadType?: string; expiresAt?: string; createdAt: string; author: Author; reactions: Reaction[]; }
 interface GroupData { id: string; name: string; emoji: string; inviteCode: string; description?: string; role?: string; }
 
 const REACTION_OPTIONS = ['❤️', '😂', '🔥', '👀', '😮', '👍'];
@@ -28,6 +28,9 @@ export default function GroupPage() {
   const [note, setNote] = useState('');
   const [posting, setPosting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showEdit, setShowEdit] = useState(false);
   const [editName, setEditName] = useState('');
@@ -60,24 +63,17 @@ export default function GroupPage() {
 
   function openEdit() {
     if (!group) return;
-    setEditName(group.name);
-    setEditEmoji(group.emoji);
-    setEditDesc(group.description ?? '');
-    setEditMsg(null);
-    setShowEdit(true);
+    setEditName(group.name); setEditEmoji(group.emoji); setEditDesc(group.description ?? '');
+    setEditMsg(null); setShowEdit(true);
   }
 
   async function saveEdit(e: React.FormEvent) {
-    e.preventDefault();
-    setEditLoading(true);
-    setEditMsg(null);
+    e.preventDefault(); setEditLoading(true); setEditMsg(null);
     const res = await fetch(`/api/groups/${groupId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: editName, emoji: editEmoji, description: editDesc }),
     });
-    const data = await res.json();
-    setEditLoading(false);
+    const data = await res.json(); setEditLoading(false);
     if (!res.ok) return setEditMsg({ type: 'err', text: data.error ?? 'Something went wrong' });
     setGroup(prev => prev ? { ...prev, name: data.name, emoji: data.emoji, description: data.description } : prev);
     setEditMsg({ type: 'ok', text: 'Group updated!' });
@@ -89,18 +85,28 @@ export default function GroupPage() {
     if (!url.trim()) return;
     setPosting(true);
     const res = await fetch(`/api/groups/${groupId}/posts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: url.trim(), note: note.trim() || undefined }),
     });
     if (res.ok) { const post = await res.json(); setPosts(prev => [post, ...prev]); setUrl(''); setNote(''); }
     setPosting(false);
   }
 
+  async function submitUpload() {
+    if (!uploadFile) return;
+    setUploading(true);
+    const fd = new FormData();
+    fd.append('file', uploadFile);
+    if (note.trim()) fd.append('note', note.trim());
+    const res = await fetch(`/api/groups/${groupId}/upload`, { method: 'POST', body: fd });
+    if (res.ok) { const post = await res.json(); setPosts(prev => [post, ...prev]); setUploadFile(null); setNote(''); }
+    else { const d = await res.json(); alert(d.error ?? 'Upload failed'); }
+    setUploading(false);
+  }
+
   async function toggleReaction(postId: string, emoji: string) {
     const res = await fetch(`/api/posts/${postId}/reactions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ emoji }),
     });
     if (res.ok) loadPosts();
@@ -118,14 +124,20 @@ export default function GroupPage() {
     return `${Math.floor(seconds / 86400)}d ago`;
   }
 
+  function expiresIn(date: string) {
+    const days = Math.ceil((new Date(date).getTime() - Date.now()) / 86400000);
+    if (days <= 0) return 'Expires soon';
+    return `Expires in ${days}d`;
+  }
+
   if (status === 'loading' || !group) return <div style={{ padding: '2rem', color: 'var(--color-text-muted)' }}>Loading...</div>;
 
-  // Show edit button for owners and admins
   const canEdit = group.role === 'owner' || group.role === 'admin';
 
   return (
     <div style={{ maxWidth: 700, margin: '0 auto', padding: '1rem' }}>
 
+      {/* Edit Modal */}
       {showEdit && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowEdit(false); }}>
@@ -144,12 +156,7 @@ export default function GroupPage() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
                   {EMOJI_OPTIONS.map(em => (
                     <button key={em} type="button" onClick={() => setEditEmoji(em)}
-                      style={{
-                        width: 38, height: 38, fontSize: '1.2rem', borderRadius: 'var(--radius-sm)',
-                        border: `2px solid ${editEmoji === em ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                        background: editEmoji === em ? 'rgba(91,106,247,0.15)' : 'var(--color-surface-2)',
-                        cursor: 'pointer', transition: 'all 0.12s',
-                      }}>{em}</button>
+                      style={{ width: 38, height: 38, fontSize: '1.2rem', borderRadius: 'var(--radius-sm)', border: `2px solid ${editEmoji === em ? 'var(--color-accent)' : 'var(--color-border)'}`, background: editEmoji === em ? 'rgba(91,106,247,0.15)' : 'var(--color-surface-2)', cursor: 'pointer', transition: 'all 0.12s' }}>{em}</button>
                   ))}
                 </div>
                 <input value={editEmoji} onChange={e => setEditEmoji(e.target.value)} placeholder="Or type any emoji" />
@@ -159,9 +166,7 @@ export default function GroupPage() {
                 <input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="What's this group about?" />
               </div>
               {editMsg && (
-                <div style={{ padding: '0.6rem 0.9rem', borderRadius: 'var(--radius-sm)', fontSize: '0.875rem',
-                  background: editMsg.type === 'ok' ? 'rgba(91,106,247,0.12)' : 'rgba(224,92,92,0.12)',
-                  color: editMsg.type === 'ok' ? 'var(--color-accent)' : 'var(--color-danger)' }}>
+                <div style={{ padding: '0.6rem 0.9rem', borderRadius: 'var(--radius-sm)', fontSize: '0.875rem', background: editMsg.type === 'ok' ? 'rgba(91,106,247,0.12)' : 'rgba(224,92,92,0.12)', color: editMsg.type === 'ok' ? 'var(--color-accent)' : 'var(--color-danger)' }}>
                   {editMsg.text}
                 </div>
               )}
@@ -174,6 +179,7 @@ export default function GroupPage() {
         </div>
       )}
 
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', paddingBottom: '1rem', borderBottom: '1px solid var(--color-border)' }}>
         <Link href="/groups" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>← Back</Link>
         <span style={{ fontSize: '1.5rem' }}>{group.emoji}</span>
@@ -182,23 +188,50 @@ export default function GroupPage() {
           {group.description && <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{group.description}</p>}
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          {canEdit && (
-            <button className="btn btn-ghost" onClick={openEdit} style={{ fontSize: '0.8rem' }}>⚙️ Edit</button>
-          )}
-          <button className="btn btn-ghost" onClick={copyInvite} style={{ fontSize: '0.8rem' }}>
-            {copied ? '✅ Copied!' : '🔗 Invite'}
-          </button>
+          {canEdit && <button className="btn btn-ghost" onClick={openEdit} style={{ fontSize: '0.8rem' }}>⚙️ Edit</button>}
+          <button className="btn btn-ghost" onClick={copyInvite} style={{ fontSize: '0.8rem' }}>{copied ? '✅ Copied!' : '🔗 Invite'}</button>
         </div>
       </div>
 
-      <form onSubmit={submitPost} className="card" style={{ marginBottom: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-        <input type="url" placeholder="Paste a link..." value={url} onChange={e => setUrl(e.target.value)} required style={{ fontSize: '0.95rem' }} />
+      {/* Composer */}
+      <div className="card" style={{ marginBottom: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+        {uploadFile ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0.75rem', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-sm)', fontSize: '0.875rem' }}>
+            <span>{uploadFile.type.startsWith('video') ? '🎬' : '🖼️'}</span>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{uploadFile.name}</span>
+            <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{(uploadFile.size / 1024 / 1024).toFixed(1)}MB</span>
+            <button onClick={() => setUploadFile(null)} style={{ color: 'var(--color-text-muted)', fontSize: '1rem' }}>✕</button>
+          </div>
+        ) : (
+          <form onSubmit={submitPost} style={{ display: 'contents' }}>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input type="url" placeholder="Paste a link..." value={url} onChange={e => setUrl(e.target.value)} required style={{ fontSize: '0.95rem', flex: 1 }} />
+              <button type="button" onClick={() => fileInputRef.current?.click()}
+                title="Upload a video or image"
+                style={{ padding: '0 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: '1.1rem', cursor: 'pointer', flexShrink: 0 }}>
+                📎
+              </button>
+            </div>
+          </form>
+        )}
         <input placeholder="Add a note (optional)" value={note} onChange={e => setNote(e.target.value)} />
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button type="submit" className="btn btn-primary" disabled={posting || !url.trim()}>{posting ? 'Sharing...' : 'Drop It 🔗'}</button>
+          {uploadFile ? (
+            <button className="btn btn-primary" onClick={submitUpload} disabled={uploading}>
+              {uploading ? 'Uploading...' : 'Drop It 📎'}
+            </button>
+          ) : (
+            <button type="submit" form="link-form" className="btn btn-primary" disabled={posting || !url.trim()}
+              onClick={async e => { e.preventDefault(); await submitPost(e as any); }}>
+              {posting ? 'Sharing...' : 'Drop It 🔗'}
+            </button>
+          )}
         </div>
-      </form>
+        <input ref={fileInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/gif,image/webp"
+          style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) setUploadFile(f); e.target.value = ''; }} />
+      </div>
 
+      {/* Feed */}
       {posts.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-muted)' }}>
           <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📭</p>
@@ -216,40 +249,58 @@ export default function GroupPage() {
               <div key={post.id} className="card" style={{ padding: '0.9rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
                   <span><strong style={{ color: 'var(--color-text)' }}>{post.author.name}</strong></span>
-                  <span>{timeAgo(post.createdAt)}</span>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    {post.expiresAt && <span style={{ fontSize: '0.72rem', color: 'var(--color-text-faint)' }}>⏳ {expiresIn(post.expiresAt)}</span>}
+                    <span>{timeAgo(post.createdAt)}</span>
+                  </div>
                 </div>
                 {post.note && <p style={{ marginBottom: '0.6rem', fontSize: '0.9rem' }}>{post.note}</p>}
-                {hasEmbed ? <PostEmbed url={post.url} /> : (
-                  <a href={post.url} target="_blank" rel="noopener noreferrer">
-                    <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--color-surface-2)' }}>
-                      {post.image && (
-                        <div style={{ position: 'relative', width: '100%', height: 180 }}>
-                          <Image src={post.image} alt={post.title ?? ''} fill style={{ objectFit: 'cover' }} unoptimized />
-                        </div>
-                      )}
-                      <div style={{ padding: '0.7rem 0.9rem' }}>
-                        {post.siteName && <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{post.siteName}</p>}
-                        {post.title && <p style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{post.title}</p>}
-                        {post.description && <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{post.description}</p>}
-                        <p style={{ fontSize: '0.75rem', color: 'var(--color-accent)', marginTop: '0.35rem' }}>{post.url.slice(0, 60)}{post.url.length > 60 ? '...' : ''}</p>
-                      </div>
-                    </div>
-                  </a>
+
+                {/* Uploaded video */}
+                {post.uploadType === 'video' && post.uploadUrl && (
+                  <video controls style={{ width: '100%', borderRadius: 8, marginBottom: '0.5rem', maxHeight: 400, background: '#000' }}>
+                    <source src={post.uploadUrl} />
+                  </video>
                 )}
-                {hasEmbed && (
+
+                {/* Uploaded image */}
+                {post.uploadType === 'image' && post.uploadUrl && (
+                  <div style={{ position: 'relative', width: '100%', marginBottom: '0.5rem' }}>
+                    <img src={post.uploadUrl} alt="uploaded" style={{ width: '100%', borderRadius: 8, maxHeight: 500, objectFit: 'cover' }} />
+                  </div>
+                )}
+
+                {/* Link embed or card */}
+                {!post.uploadUrl && post.url && (
+                  hasEmbed ? <PostEmbed url={post.url} /> : (
+                    <a href={post.url} target="_blank" rel="noopener noreferrer">
+                      <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--color-surface-2)' }}>
+                        {post.image && (
+                          <div style={{ position: 'relative', width: '100%', height: 180 }}>
+                            <Image src={post.image} alt={post.title ?? ''} fill style={{ objectFit: 'cover' }} unoptimized />
+                          </div>
+                        )}
+                        <div style={{ padding: '0.7rem 0.9rem' }}>
+                          {post.siteName && <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{post.siteName}</p>}
+                          {post.title && <p style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{post.title}</p>}
+                          {post.description && <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{post.description}</p>}
+                          <p style={{ fontSize: '0.75rem', color: 'var(--color-accent)', marginTop: '0.35rem' }}>{post.url.slice(0, 60)}{post.url.length > 60 ? '...' : ''}</p>
+                        </div>
+                      </div>
+                    </a>
+                  )
+                )}
+
+                {hasEmbed && post.url && (
                   <a href={post.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.4rem' }}>
                     ↗ Open in {embed.type.charAt(0).toUpperCase() + embed.type.slice(1)}
                   </a>
                 )}
+
                 <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.65rem', flexWrap: 'wrap' }}>
                   {REACTION_OPTIONS.map(emoji => (
                     <button key={emoji} onClick={() => toggleReaction(post.id, emoji)}
-                      style={{
-                        padding: '0.25rem 0.55rem', borderRadius: 20, fontSize: '0.85rem',
-                        border: `1px solid ${myReactions.has(emoji) ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                        background: myReactions.has(emoji) ? 'rgba(91,106,247,0.15)' : 'transparent',
-                        color: 'var(--color-text)', transition: 'all 0.12s', cursor: 'pointer',
-                      }}>
+                      style={{ padding: '0.25rem 0.55rem', borderRadius: 20, fontSize: '0.85rem', border: `1px solid ${myReactions.has(emoji) ? 'var(--color-accent)' : 'var(--color-border)'}`, background: myReactions.has(emoji) ? 'rgba(91,106,247,0.15)' : 'transparent', color: 'var(--color-text)', transition: 'all 0.12s', cursor: 'pointer' }}>
                       {emoji}{reactionCounts[emoji] ? ` ${reactionCounts[emoji]}` : ''}
                     </button>
                   ))}
