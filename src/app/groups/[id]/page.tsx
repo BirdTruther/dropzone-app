@@ -30,6 +30,7 @@ export default function GroupPage() {
   const [copied, setCopied] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showEdit, setShowEdit] = useState(false);
@@ -102,6 +103,15 @@ export default function GroupPage() {
     if (res.ok) { const post = await res.json(); setPosts(prev => [post, ...prev]); setUploadFile(null); setNote(''); }
     else { const d = await res.json(); alert(d.error ?? 'Upload failed'); }
     setUploading(false);
+  }
+
+  async function deletePost(postId: string) {
+    if (!confirm('Delete this post? This cannot be undone.')) return;
+    setDeletingId(postId);
+    const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE' });
+    if (res.ok) setPosts(prev => prev.filter(p => p.id !== postId));
+    else { const d = await res.json(); alert(d.error ?? 'Could not delete post'); }
+    setDeletingId(null);
   }
 
   async function toggleReaction(postId: string, emoji: string) {
@@ -245,13 +255,25 @@ export default function GroupPage() {
             post.reactions.forEach(r => { reactionCounts[r.emoji] = (reactionCounts[r.emoji] ?? 0) + 1; });
             const embed = getEmbed(post.url);
             const hasEmbed = embed.type !== 'none';
+            const isMyPost = post.author.id === userId;
             return (
-              <div key={post.id} className="card" style={{ padding: '0.9rem' }}>
+              <div key={post.id} className="card" style={{ padding: '0.9rem', opacity: deletingId === post.id ? 0.5 : 1, transition: 'opacity 0.2s' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
                   <span><strong style={{ color: 'var(--color-text)' }}>{post.author.name}</strong></span>
                   <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                     {post.expiresAt && <span style={{ fontSize: '0.72rem', color: 'var(--color-text-faint)' }}>⏳ {expiresIn(post.expiresAt)}</span>}
                     <span>{timeAgo(post.createdAt)}</span>
+                    {isMyPost && (
+                      <button
+                        onClick={() => deletePost(post.id)}
+                        disabled={deletingId === post.id}
+                        title="Delete post"
+                        style={{ color: 'var(--color-danger, #e05c5c)', fontSize: '0.8rem', opacity: 0.6, cursor: 'pointer', padding: '0 0.2rem', lineHeight: 1, background: 'none', border: 'none', transition: 'opacity 0.12s' }}
+                        onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                        onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}>
+                        🗑️
+                      </button>
+                    )}
                   </div>
                 </div>
                 {post.note && <p style={{ marginBottom: '0.6rem', fontSize: '0.9rem' }}>{post.note}</p>}
