@@ -13,7 +13,6 @@ interface Post { id: string; url: string; title?: string; description?: string; 
 interface GroupData { id: string; name: string; emoji: string; inviteCode: string; description?: string; role?: string; }
 
 const REACTION_OPTIONS = ['❤️', '😂', '🔥', '👀', '😮', '👍'];
-
 const EMOJI_OPTIONS = ['🔗','🎮','🎵','🎬','📚','💡','🏆','🌍','🍕','😂','🔥','💬','📸','🎨','⚽','🐦','🚀','🛠️','💎','🌙'];
 
 export default function GroupPage() {
@@ -30,7 +29,6 @@ export default function GroupPage() {
   const [posting, setPosting] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Edit modal state
   const [showEdit, setShowEdit] = useState(false);
   const [editName, setEditName] = useState('');
   const [editEmoji, setEditEmoji] = useState('');
@@ -49,7 +47,7 @@ export default function GroupPage() {
     if (status !== 'authenticated') return;
     fetch('/api/groups').then(r => r.json()).then((gs: GroupData[]) => {
       const g = gs.find((x: GroupData) => x.id === groupId);
-      if (g) { setGroup(g); } else router.push('/groups');
+      if (g) setGroup(g); else router.push('/groups');
     });
     loadPosts();
   }, [status, groupId, loadPosts, router]);
@@ -122,12 +120,12 @@ export default function GroupPage() {
 
   if (status === 'loading' || !group) return <div style={{ padding: '2rem', color: 'var(--color-text-muted)' }}>Loading...</div>;
 
-  const isAdmin = group.role === 'admin';
+  // Show edit button for owners and admins
+  const canEdit = group.role === 'owner' || group.role === 'admin';
 
   return (
     <div style={{ maxWidth: 700, margin: '0 auto', padding: '1rem' }}>
 
-      {/* Edit Modal */}
       {showEdit && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowEdit(false); }}>
@@ -145,8 +143,7 @@ export default function GroupPage() {
                 <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>Icon</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
                   {EMOJI_OPTIONS.map(em => (
-                    <button key={em} type="button"
-                      onClick={() => setEditEmoji(em)}
+                    <button key={em} type="button" onClick={() => setEditEmoji(em)}
                       style={{
                         width: 38, height: 38, fontSize: '1.2rem', borderRadius: 'var(--radius-sm)',
                         border: `2px solid ${editEmoji === em ? 'var(--color-accent)' : 'var(--color-border)'}`,
@@ -155,7 +152,7 @@ export default function GroupPage() {
                       }}>{em}</button>
                   ))}
                 </div>
-                <input value={editEmoji} onChange={e => setEditEmoji(e.target.value)} placeholder="Or type any emoji" style={{ width: '100%' }} />
+                <input value={editEmoji} onChange={e => setEditEmoji(e.target.value)} placeholder="Or type any emoji" />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>Description <span style={{ opacity: 0.5 }}>(optional)</span></label>
@@ -177,7 +174,6 @@ export default function GroupPage() {
         </div>
       )}
 
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', paddingBottom: '1rem', borderBottom: '1px solid var(--color-border)' }}>
         <Link href="/groups" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>← Back</Link>
         <span style={{ fontSize: '1.5rem' }}>{group.emoji}</span>
@@ -186,7 +182,7 @@ export default function GroupPage() {
           {group.description && <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{group.description}</p>}
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          {isAdmin && (
+          {canEdit && (
             <button className="btn btn-ghost" onClick={openEdit} style={{ fontSize: '0.8rem' }}>⚙️ Edit</button>
           )}
           <button className="btn btn-ghost" onClick={copyInvite} style={{ fontSize: '0.8rem' }}>
@@ -195,7 +191,6 @@ export default function GroupPage() {
         </div>
       </div>
 
-      {/* Composer */}
       <form onSubmit={submitPost} className="card" style={{ marginBottom: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
         <input type="url" placeholder="Paste a link..." value={url} onChange={e => setUrl(e.target.value)} required style={{ fontSize: '0.95rem' }} />
         <input placeholder="Add a note (optional)" value={note} onChange={e => setNote(e.target.value)} />
@@ -204,7 +199,6 @@ export default function GroupPage() {
         </div>
       </form>
 
-      {/* Feed */}
       {posts.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--color-text-muted)' }}>
           <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📭</p>
@@ -225,9 +219,7 @@ export default function GroupPage() {
                   <span>{timeAgo(post.createdAt)}</span>
                 </div>
                 {post.note && <p style={{ marginBottom: '0.6rem', fontSize: '0.9rem' }}>{post.note}</p>}
-                {hasEmbed ? (
-                  <PostEmbed url={post.url} />
-                ) : (
+                {hasEmbed ? <PostEmbed url={post.url} /> : (
                   <a href={post.url} target="_blank" rel="noopener noreferrer">
                     <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--color-surface-2)' }}>
                       {post.image && (

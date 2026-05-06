@@ -10,12 +10,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const user = await prisma.user.findUnique({ where: { email: session.user.email } });
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-  // Only allow admins/creators to edit
   const membership = await prisma.groupMember.findUnique({
     where: { userId_groupId: { userId: user.id, groupId: params.id } },
   });
-  if (!membership || membership.role !== 'admin') {
-    return NextResponse.json({ error: 'Only group admins can edit this group' }, { status: 403 });
+
+  // Allow owners and admins to edit
+  if (!membership || !['owner', 'admin'].includes(membership.role)) {
+    return NextResponse.json({ error: 'Only group owners or admins can edit this group' }, { status: 403 });
   }
 
   const { name, emoji, description } = await req.json();
