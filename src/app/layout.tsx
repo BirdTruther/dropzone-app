@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Providers } from '@/components/Providers';
+import Header from '@/components/Header';
+import Footer from '@/components/Footer';
 
 export const metadata: Metadata = {
   title: 'Dropzone',
@@ -10,8 +12,12 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
-        <Providers>{children}</Providers>
+      <body style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+        <Providers>
+          <Header />
+          <main style={{ flex: 1 }}>{children}</main>
+          <Footer />
+        </Providers>
       </body>
     </html>
   );
