@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { MAX_FILE_SIZE, MAX_VOLUME_SIZE, getUploadsSize } from '@/lib/storage';
@@ -10,6 +10,19 @@ import { MAX_FILE_SIZE, MAX_VOLUME_SIZE, getUploadsSize } from '@/lib/storage';
 const ALLOWED_VIDEO = ['video/mp4', 'video/quicktime', 'video/webm'];
 const ALLOWED_IMAGE = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const EXPIRE_DAYS = 7;
+
+async function purgeExpired() {
+  const expired = await prisma.post.findMany({
+    where: { expiresAt: { lt: new Date() }, uploadUrl: { not: null } },
+  });
+  for (const post of expired) {
+    if (post.uploadUrl) {
+      try { await unlink(join(process.cwd(), 'public', post.uploadUrl)); } catch { /* already gone */ }
+    }
+    await prisma.post.delete({ where: { id: post.id } });
+  }
+  return expired.length;
+}
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -34,12 +47,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const isImage = ALLOWED_IMAGE.includes(file.type);
   if (!isVideo && !isImage) return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
 
-  // Check volume cap
-  const currentSize = await getUploadsSize();
+  // Check volume — if full, auto-purge expired files first then re-check
+  let currentSize = await getUploadsSize();
   if (currentSize + file.size > MAX_VOLUME_SIZE) {
-    return NextResponse.json({
-      error: `Storage full — uploads are limited to 20GB total. Try again after some files expire.`,
-    }, { status: 507 });
+    await purgeExpired();
+    currentSize = await getUploadsSize();
+    if (currentSize + file.size > MAX_VOLUME_SIZE) {
+      return NextResponse.json({
+        error: 'Storage is full and no expired files could be cleared. Try again later.',
+      }, { status: 507 });
+    }
   }
 
   const ext = file.name.split('.').pop() ?? (isVideo ? 'mp4' : 'jpg');
