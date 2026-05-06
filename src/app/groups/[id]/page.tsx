@@ -15,6 +15,36 @@ interface GroupData { id: string; name: string; emoji: string; inviteCode: strin
 const REACTION_OPTIONS = ['❤️', '😂', '🔥', '👀', '😮', '👍'];
 const EMOJI_OPTIONS = ['🔗','🎮','🎵','🎬','📚','💡','🏆','🌍','🍕','😂','🔥','💬','📸','🎨','⚽','🐦','🚀','🛠️','💎','🌙'];
 
+// Deterministic color from name for avatar fallback
+function avatarColor(name: string) {
+  const colors = ['#5b6af7','#e05c9a','#f97316','#22c55e','#06b6d4','#a855f7','#eab308','#ef4444'];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function AuthorAvatar({ author }: { author: Author }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const initial = (author.name ?? '?')[0].toUpperCase();
+  const bg = avatarColor(author.name ?? '');
+
+  if (author.avatar && !imgFailed) {
+    return (
+      <img
+        src={author.avatar}
+        alt={author.name}
+        onError={() => setImgFailed(true)}
+        style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1.5px solid var(--color-border)' }}
+      />
+    );
+  }
+  return (
+    <div style={{ width: 28, height: 28, borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#fff', flexShrink: 0, border: '1.5px solid var(--color-border)' }}>
+      {initial}
+    </div>
+  );
+}
+
 export default function GroupPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -258,9 +288,14 @@ export default function GroupPage() {
             const isMyPost = post.author.id === userId;
             return (
               <div key={post.id} className="card" style={{ padding: '0.9rem', opacity: deletingId === post.id ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                  <span><strong style={{ color: 'var(--color-text)' }}>{post.author.name}</strong></span>
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+
+                {/* Post header with avatar */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <AuthorAvatar author={post.author} />
+                    <span style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{post.author.name}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
                     {post.expiresAt && <span style={{ fontSize: '0.72rem', color: 'var(--color-text-faint)' }}>⏳ {expiresIn(post.expiresAt)}</span>}
                     <span>{timeAgo(post.createdAt)}</span>
                     {isMyPost && (
@@ -276,6 +311,7 @@ export default function GroupPage() {
                     )}
                   </div>
                 </div>
+
                 {post.note && <p style={{ marginBottom: '0.6rem', fontSize: '0.9rem' }}>{post.note}</p>}
 
                 {/* Uploaded video */}
