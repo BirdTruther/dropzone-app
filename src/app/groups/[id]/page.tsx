@@ -4,6 +4,8 @@ import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import PostEmbed from '@/components/PostEmbed';
+import { getEmbed } from '@/lib/embed';
 
 interface Author { id: string; name: string; avatar?: string; }
 interface Reaction { id: string; emoji: string; userId: string; }
@@ -41,7 +43,6 @@ export default function GroupPage() {
     loadPosts();
   }, [status, groupId, loadPosts, router]);
 
-  // Poll every 15 seconds for new posts
   useEffect(() => {
     if (status !== 'authenticated') return;
     const interval = setInterval(loadPosts, 15000);
@@ -142,6 +143,8 @@ export default function GroupPage() {
             const myReactions = new Set(post.reactions.filter(r => r.userId === session?.user?.id).map(r => r.emoji));
             const reactionCounts: Record<string, number> = {};
             post.reactions.forEach(r => { reactionCounts[r.emoji] = (reactionCounts[r.emoji] ?? 0) + 1; });
+            const embed = getEmbed(post.url);
+            const hasEmbed = embed.type !== 'none';
             return (
               <div key={post.id} className="card" style={{ padding: '0.9rem' }}>
                 {/* Post meta */}
@@ -151,22 +154,35 @@ export default function GroupPage() {
                 </div>
                 {/* Note */}
                 {post.note && <p style={{ marginBottom: '0.6rem', fontSize: '0.9rem' }}>{post.note}</p>}
-                {/* Preview card */}
-                <a href={post.url} target="_blank" rel="noopener noreferrer">
-                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--color-surface-2)' }}>
-                    {post.image && (
-                      <div style={{ position: 'relative', width: '100%', height: 180 }}>
-                        <Image src={post.image} alt={post.title ?? ''} fill style={{ objectFit: 'cover' }} unoptimized />
+
+                {/* Embed OR preview card */}
+                {hasEmbed ? (
+                  <PostEmbed url={post.url} />
+                ) : (
+                  <a href={post.url} target="_blank" rel="noopener noreferrer">
+                    <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--color-surface-2)' }}>
+                      {post.image && (
+                        <div style={{ position: 'relative', width: '100%', height: 180 }}>
+                          <Image src={post.image} alt={post.title ?? ''} fill style={{ objectFit: 'cover' }} unoptimized />
+                        </div>
+                      )}
+                      <div style={{ padding: '0.7rem 0.9rem' }}>
+                        {post.siteName && <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{post.siteName}</p>}
+                        {post.title && <p style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{post.title}</p>}
+                        {post.description && <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{post.description}</p>}
+                        <p style={{ fontSize: '0.75rem', color: 'var(--color-accent)', marginTop: '0.35rem' }}>{post.url.slice(0, 60)}{post.url.length > 60 ? '...' : ''}</p>
                       </div>
-                    )}
-                    <div style={{ padding: '0.7rem 0.9rem' }}>
-                      {post.siteName && <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{post.siteName}</p>}
-                      {post.title && <p style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{post.title}</p>}
-                      {post.description && <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{post.description}</p>}
-                      <p style={{ fontSize: '0.75rem', color: 'var(--color-accent)', marginTop: '0.35rem' }}>{post.url.slice(0, 60)}{post.url.length > 60 ? '...' : ''}</p>
                     </div>
-                  </div>
-                </a>
+                  </a>
+                )}
+
+                {/* Source link for embeds */}
+                {hasEmbed && (
+                  <a href={post.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'block', marginBottom: '0.4rem' }}>
+                    ↗ Open in {embed.type.charAt(0).toUpperCase() + embed.type.slice(1)}
+                  </a>
+                )}
+
                 {/* Reactions */}
                 <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.65rem', flexWrap: 'wrap' }}>
                   {REACTION_OPTIONS.map(emoji => (
