@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  password      String
+  avatar        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  memberships   GroupMember[]
+  posts         Post[]
+  reactions     Reaction[]
+}
+
+model Group {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  emoji       String    @default("🔗")
+  inviteCode  String    @unique @default(cuid())
+  createdAt   DateTime  @default(now())
+
+  members     GroupMember[]
+  posts       Post[]
+}
+
+model GroupMember {
+  id        String   @id @default(cuid())
+  role      String   @default("member") // owner | member
+  joinedAt  DateTime @default(now())
+
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  group     Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId   String
+
+  @@unique([userId, groupId])
+}
+
+model Post {
+  id          String    @id @default(cuid())
+  url         String
+  title       String?
+  description String?
+  image       String?
+  siteName    String?
+  note        String?   // optional message from poster
+  createdAt   DateTime  @default(now())
+
+  author      User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId    String
+  group       Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId     String
+
+  reactions   Reaction[]
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  emoji     String   // e.g. "❤️" "😂" "🔥" "👀"
+  createdAt DateTime @default(now())
+
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  post      Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String
+
+  @@unique([userId, postId, emoji])
+}

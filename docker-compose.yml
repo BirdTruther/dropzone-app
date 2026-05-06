@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: dropzone-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dropzone
+      POSTGRES_PASSWORD: dropzone_pass
+      POSTGRES_DB: dropzone
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  app:
+    build: .
+    container_name: dropzone-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://dropzone:dropzone_pass@db:5432/dropzone
+      NEXTAUTH_SECRET: CHANGE_ME_TO_A_RANDOM_32_CHAR_STRING
+      NEXTAUTH_URL: http://localhost:3000
+      NODE_ENV: production
+    depends_on:
+      - db
+    command: sh -c "npx prisma migrate deploy && node server.js"
+
+volumes:
+  pg_data:
