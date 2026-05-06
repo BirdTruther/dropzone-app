@@ -25,7 +25,17 @@ services:
       NODE_ENV: production
     depends_on:
       - db
-    command: sh -c "./node_modules/.bin/prisma migrate deploy && node server.js"
+
+  migrate:
+    build: .
+    container_name: dropzone-migrate
+    environment:
+      DATABASE_URL: postgresql://dropzone:dropzone_pass@db:5432/dropzone
+    depends_on:
+      - db
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["cd /app && npm install --prefix /migrate-tmp && /migrate-tmp/node_modules/.bin/prisma migrate deploy"]
+    restart: "no"
 
 volumes:
   pg_data:
