@@ -13,10 +13,10 @@ export default function Header() {
       top: 0,
       zIndex: 50,
       width: '100%',
-      borderBottom: '1px solid rgba(0,0,0,0.08)',
-      background: 'rgba(255,255,255,0.9)',
-      backdropFilter: 'blur(8px)',
-      WebkitBackdropFilter: 'blur(8px)',
+      borderBottom: '1px solid var(--color-border)',
+      background: 'rgba(15,15,15,0.85)',
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
     }}>
       <div style={{
         maxWidth: '960px',
@@ -27,12 +27,10 @@ export default function Header() {
         alignItems: 'center',
         justifyContent: 'space-between',
       }}>
-        {/* Logo / App name */}
-        <Link href="/" style={{ fontWeight: 700, fontSize: '1.1rem', textDecoration: 'none', color: 'inherit' }}>
+        <Link href="/" style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--color-text)' }}>
           Dropzone
         </Link>
 
-        {/* Right side — profile */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           {user ? (
             <Link
@@ -41,8 +39,7 @@ export default function Header() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.5rem',
-                textDecoration: 'none',
-                color: 'inherit',
+                color: 'var(--color-text)',
                 fontSize: '0.875rem',
                 fontWeight: 500,
               }}
@@ -60,18 +57,19 @@ export default function Header() {
                   width: 32,
                   height: 32,
                   borderRadius: '50%',
-                  background: '#e5e7eb',
-                  display: 'flex',
+                  background: 'var(--color-accent)',
+                  display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: '0.85rem',
                   fontWeight: 600,
-                  color: '#374151',
+                  color: '#fff',
+                  flexShrink: 0,
                 }}>
                   {(user.name ?? 'U')[0].toUpperCase()}
                 </span>
               )}
-              <span>{user.name ?? 'Profile'}</span>
+              <span style={{ color: 'var(--color-text-muted)' }}>{user.name ?? 'Profile'}</span>
             </Link>
           ) : (
             <Link
@@ -79,8 +77,7 @@ export default function Header() {
               style={{
                 fontSize: '0.875rem',
                 fontWeight: 500,
-                textDecoration: 'none',
-                color: '#374151',
+                color: 'var(--color-text-muted)',
               }}
             >
               Sign in
