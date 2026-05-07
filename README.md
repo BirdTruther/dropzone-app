@@ -12,8 +12,9 @@ A private group link-sharing web app. Share links, videos, and images with frien
 
 ## Features
 - 🔗 Link sharing with rich OG previews
-- 🎬 Video & image uploads (100MB max per file, 20GB total)
+- 🎥 Video & image uploads (100MB max per file, 20GB total)
 - ♾️ Uploads kept indefinitely — no expiry
+- 🔗 Share links — generate a public preview URL for any post that embeds in Discord
 - ❤️ Emoji reactions on posts
 - 👥 Private invite-only groups
 - 🗑️ Authors can delete their own posts
@@ -33,6 +34,8 @@ cd dropzone-app
 cp .env.example .env
 # Edit .env with your values
 ```
+
+> ⚠️ Make sure `NEXTAUTH_URL` is set to your full `https://` domain (e.g. `https://link.yourserver.com`). Discord and other platforms require HTTPS for image embeds.
 
 ### 3. Run with Docker
 ```bash
@@ -63,6 +66,7 @@ src/
     (auth)/login/       # Login page
     groups/             # Groups list + group feed
     api/                # API routes
+    share/[token]/      # Public share preview page
   components/           # Reusable UI components
   lib/                  # DB, auth, utils
 prisma/
