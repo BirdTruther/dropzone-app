@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.0 — May 7, 2026
+- Added share link feature — generate a public, tokenized share URL for any post
+- Share links load a clean public preview page with the image, video, author info, and note
+- Images and videos embedded via Open Graph meta tags — links embed natively in Discord
+- Share page includes a "Join dropzone to see more →" CTA linking back to the app
+- Share tokens are stored in the database and support optional expiry (currently indefinite)
+
 ## v0.5.0 — May 7, 2026
 - Removed 7-day upload expiry — files are now kept indefinitely
 - Added PWA support with `manifest.json` for install-to-home-screen
