@@ -21,7 +21,8 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - uploads:/app/public/uploads
 
@@ -33,7 +34,7 @@ services:
     depends_on:
       - db
     entrypoint: ["/bin/sh", "-c"]
-    command: ["cd /app && npm install --prefix /migrate-tmp && /migrate-tmp/node_modules/.bin/prisma migrate deploy"]
+    command: ["./node_modules/.bin/prisma db push --config /app/prisma.config.ts"]
     restart: "no"
 
 volumes:
