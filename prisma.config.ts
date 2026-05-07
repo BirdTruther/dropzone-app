@@ -7,6 +7,7 @@ const connectionString = process.env.DATABASE_URL!;
 export default defineConfig({
   schema: path.join('prisma', 'schema.prisma'),
   migrate: {
+    directUrl: connectionString,
     async adapter() {
       return new PrismaPg({ connectionString });
     },
