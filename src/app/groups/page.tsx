@@ -47,7 +47,10 @@ export default function GroupsPage() {
     <div style={{ maxWidth: 700, margin: '0 auto', padding: '2rem 1rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 700 }}>🔗 Dropzone</h1>
+          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <img src="/android-chrome-192x192.png" alt="dropzone logo" width={28} height={28} style={{ borderRadius: '6px' }} />
+            dropzone
+          </h1>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>Hey, {session?.user?.name} 👋</p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
