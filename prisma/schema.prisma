@@ -5,7 +5,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -96,10 +95,10 @@ model ShareToken {
 
 model Notification {
   id          String   @id @default(cuid())
-  type        String   // 'reaction' | 'new_post' | 'new_member'
+  type        String
   message     String
-  link        String?  // e.g. /groups/[id]
-  actorName   String?  // who triggered it
+  link        String?
+  actorName   String?
   actorAvatar String?
   read        Boolean  @default(false)
   createdAt   DateTime @default(now())
