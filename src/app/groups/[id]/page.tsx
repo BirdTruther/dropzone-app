@@ -185,12 +185,6 @@ export default function GroupPage() {
     return `${Math.floor(seconds / 86400)}d ago`;
   }
 
-  function expiresIn(date: string) {
-    const days = Math.ceil((new Date(date).getTime() - Date.now()) / 86400000);
-    if (days <= 0) return 'Expires soon';
-    return `Expires in ${days}d`;
-  }
-
   if (status === 'loading' || !group) return <div style={{ padding: '2rem', color: 'var(--color-text-muted)' }}>Loading...</div>;
 
   const isOwner = group.role === 'owner';
@@ -368,7 +362,6 @@ export default function GroupPage() {
                     <span style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{post.author.name}</span>
                   </div>
                   <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                    {post.expiresAt && <span style={{ fontSize: '0.72rem', color: 'var(--color-text-faint)' }}>⏳ {expiresIn(post.expiresAt)}</span>}
                     <span>{timeAgo(post.createdAt)}</span>
                     {isMyPost && (
                       <button onClick={() => deletePost(post.id)} disabled={deletingId === post.id} title="Delete post"
