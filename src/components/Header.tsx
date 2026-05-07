@@ -47,10 +47,24 @@ export default function Header() {
               🛡️ Admin
             </Link>
           )}
+
+          {user && (
+            <Link
+              href="/notifications"
+              aria-label="Notifications"
+              style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: '50%', color: 'var(--color-text-muted)', transition: 'color 0.15s, background 0.15s', textDecoration: 'none' }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+            </Link>
+          )}
+
           {user ? (
             <Link
               href="/profile"
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-text)', fontSize: '0.875rem', fontWeight: 500 }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-text)', fontSize: '0.875rem', fontWeight: 500, textDecoration: 'none' }}
             >
               {user.image ? (
                 <img src={user.image} alt={user.name ?? 'Profile'} width={32} height={32} style={{ borderRadius: '50%', objectFit: 'cover' }} />
