@@ -13,6 +13,7 @@ model User {
   email         String    @unique
   password      String
   avatar        String?
+  isSiteAdmin   Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -27,6 +28,7 @@ model Group {
   description String?
   emoji       String    @default("🔗")
   inviteCode  String    @unique @default(cuid())
+  openInvite  Boolean   @default(false)
   createdAt   DateTime  @default(now())
 
   members     GroupMember[]
@@ -54,9 +56,9 @@ model Post {
   image       String?
   siteName    String?
   note        String?
-  uploadUrl   String?   // path to uploaded file e.g. /uploads/filename.mp4
-  uploadType  String?   // 'video' or 'image'
-  expiresAt   DateTime? // auto-delete after this date
+  uploadUrl   String?
+  uploadType  String?
+  expiresAt   DateTime?
   createdAt   DateTime  @default(now())
 
   author      User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
