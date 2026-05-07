@@ -1,15 +1,9 @@
-import path from 'path';
+import 'dotenv/config';
 import { defineConfig } from 'prisma/config';
-import { PrismaPg } from '@prisma/adapter-pg';
-
-const connectionString = process.env.DATABASE_URL!;
 
 export default defineConfig({
-  schema: path.join('prisma', 'schema.prisma'),
-  migrate: {
-    directUrl: connectionString,
-    async adapter() {
-      return new PrismaPg({ connectionString });
-    },
+  schema: 'prisma/schema.prisma',
+  datasource: {
+    url: process.env.DATABASE_URL!,
   },
 });
