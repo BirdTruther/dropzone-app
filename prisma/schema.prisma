@@ -20,6 +20,7 @@ model User {
   memberships   GroupMember[]
   posts         Post[]
   reactions     Reaction[]
+  notifications Notification[]
 }
 
 model Group {
@@ -90,4 +91,18 @@ model ShareToken {
   post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
   createdAt DateTime  @default(now())
   expiresAt DateTime?
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  type        String   // 'reaction' | 'new_post' | 'new_member'
+  message     String
+  link        String?  // e.g. /groups/[id]
+  actorName   String?  // who triggered it
+  actorAvatar String?
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
 }
