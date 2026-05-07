@@ -27,14 +27,17 @@ services:
       - uploads:/app/public/uploads
 
   migrate:
-    build: .
+    image: node:20-alpine
     container_name: dropzone-migrate
     env_file:
       - .env
     depends_on:
       - db
+    working_dir: /app
+    volumes:
+      - .:/app
     entrypoint: ["/bin/sh", "-c"]
-    command: ["./node_modules/.bin/prisma db push --config /app/prisma.config.ts"]
+    command: ["npm install && npx prisma db push"]
     restart: "no"
 
 volumes:
