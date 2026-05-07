@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import ChangelogModal from '@/components/ChangelogModal';
 
 export default function Footer() {
   return (
@@ -16,6 +17,7 @@ export default function Footer() {
         gap: '1.5rem',
         fontSize: '0.8125rem',
         color: 'var(--color-text-muted)',
+        flexWrap: 'wrap',
       }}>
         <Link href="/privacy" style={{ color: 'inherit' }}>
           Privacy Policy
@@ -24,6 +26,8 @@ export default function Footer() {
         <Link href="/data-deletion" style={{ color: 'inherit' }}>
           Data Deletion
         </Link>
+        <span aria-hidden="true">·</span>
+        <ChangelogModal />
         <span aria-hidden="true">·</span>
         <span>© {new Date().getFullYear()} Dropzone</span>
       </div>
