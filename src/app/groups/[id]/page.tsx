@@ -56,6 +56,8 @@ export default function GroupPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sharingId, setSharingId] = useState<string | null>(null);
+  const [sharedId, setSharedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showEdit, setShowEdit] = useState(false);
@@ -163,6 +165,21 @@ export default function GroupPage() {
     if (res.ok) setPosts(prev => prev.filter(p => p.id !== postId));
     else { const d = await res.json(); alert(d.error ?? 'Could not delete post'); }
     setDeletingId(null);
+  }
+
+  async function sharePost(postId: string) {
+    setSharingId(postId);
+    const res = await fetch('/api/share', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postId }),
+    });
+    if (res.ok) {
+      const { url: shareUrl } = await res.json();
+      await navigator.clipboard.writeText(shareUrl);
+      setSharedId(postId);
+      setTimeout(() => setSharedId(null), 2500);
+    }
+    setSharingId(null);
   }
 
   async function toggleReaction(postId: string, emoji: string) {
@@ -363,6 +380,17 @@ export default function GroupPage() {
                   </div>
                   <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
                     <span>{timeAgo(post.createdAt)}</span>
+                    {/* Share button — available to all group members */}
+                    <button
+                      onClick={() => sharePost(post.id)}
+                      disabled={sharingId === post.id}
+                      title="Copy share link"
+                      style={{ fontSize: '0.8rem', opacity: 0.6, cursor: 'pointer', padding: '0 0.2rem', lineHeight: 1, background: 'none', border: 'none', transition: 'opacity 0.12s', color: sharedId === post.id ? 'var(--color-accent, #5b6af7)' : 'var(--color-text-muted)' }}
+                      onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                      onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}
+                    >
+                      {sharingId === post.id ? '⏳' : sharedId === post.id ? '✅' : '🔗'}
+                    </button>
                     {isMyPost && (
                       <button onClick={() => deletePost(post.id)} disabled={deletingId === post.id} title="Delete post"
                         style={{ color: 'var(--color-danger, #e05c5c)', fontSize: '0.8rem', opacity: 0.6, cursor: 'pointer', padding: '0 0.2rem', lineHeight: 1, background: 'none', border: 'none', transition: 'opacity 0.12s' }}
