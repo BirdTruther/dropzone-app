@@ -21,6 +21,24 @@ A private group link-sharing web app. Share links, videos, and images with frien
 - 📱 PWA — installable on iOS and Android
 - 🌙 Dark mode
 
+## Admin Panel
+
+Accessible at `/admin` by any user with `isSiteAdmin = true`.
+
+### User Management
+- View all registered users with post and group counts
+- **Promote / demote** users to site admin
+- **Force reset password** — set a new password for any user directly from the panel (no email required)
+- **Delete user** — removes the account along with all their posts and group memberships
+
+### Content Management
+- View all posts across every group
+- **Delete any post** site-wide
+
+### Password Self-Service
+- Users can change their own password at `/profile/change-password` (requires current password)
+- Locked-out users are directed to open a Discord support ticket via the **Forgot password?** link on the login screen
+
 ## Getting Started
 
 ### 1. Clone
@@ -63,10 +81,13 @@ This pulls the latest from `main`, resets the working tree, and rebuilds the Doc
 ```
 src/
   app/
-    (auth)/login/       # Login page
+    (auth)/login/       # Login + forgot password pages
+    admin/              # Admin panel (users & posts)
     groups/             # Groups list + group feed
+    profile/            # Profile + change password
     api/                # API routes
     share/[token]/      # Public share preview page
+    forgot-password/    # Lockout help page
   components/           # Reusable UI components
   lib/                  # DB, auth, utils
 prisma/
