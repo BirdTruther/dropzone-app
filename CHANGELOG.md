@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.0 — May 7, 2026
+- Removed 7-day upload expiry — files are now kept indefinitely
+- Added PWA support with `manifest.json` for install-to-home-screen
+- Added full icon set (favicon, apple-touch-icon, android-chrome) using custom dropzone logo
+- Updated header: lowercase 'dropzone' branding with new logo replacing paperclip icon
+- Added `apple-mobile-web-app-capable` and `theme-color` meta tags for clean iOS standalone mode
+- Added `updatedropzone` server script for one-command deployments
+- Fixed mobile responsiveness verified on iPhone 17
+
 ## v0.4.0 — May 6, 2026
 - Added profile picture avatars beside usernames in posts
 - Improved TikTok embeds — clean player, no white background, no suggested videos

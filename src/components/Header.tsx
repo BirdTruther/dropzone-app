@@ -36,8 +36,9 @@ export default function Header() {
         alignItems: 'center',
         justifyContent: 'space-between',
       }}>
-        <Link href="/" style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--color-text)' }}>
-          Dropzone
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '1.1rem', color: 'var(--color-text)', textDecoration: 'none' }}>
+          <img src="/android-chrome-192x192.png" alt="dropzone logo" width={28} height={28} style={{ borderRadius: '6px' }} />
+          dropzone
         </Link>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>

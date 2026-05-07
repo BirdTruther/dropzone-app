@@ -1,6 +1,6 @@
-# Dropzone
+# dropzone
 
-A private group link-sharing web app. Share links, videos, and images with friends — get rich previews, react to posts, and keep things tidy with auto-expiring uploads.
+A private group link-sharing web app. Share links, videos, and images with friends — get rich previews, react to posts, and keep your feed alive indefinitely.
 
 ## Stack
 - **Next.js 14** (App Router, standalone output)
@@ -13,10 +13,11 @@ A private group link-sharing web app. Share links, videos, and images with frien
 ## Features
 - 🔗 Link sharing with rich OG previews
 - 🎬 Video & image uploads (100MB max per file, 20GB total)
-- ⏳ Uploads auto-expire after 7 days
+- ♾️ Uploads kept indefinitely — no expiry
 - ❤️ Emoji reactions on posts
 - 👥 Private invite-only groups
 - 🗑️ Authors can delete their own posts
+- 📱 PWA — installable on iOS and Android
 - 🌙 Dark mode
 
 ## Getting Started
@@ -44,6 +45,16 @@ App runs at: `http://localhost:3000`
 ```bash
 sudo docker compose exec app npx prisma migrate deploy
 ```
+
+## Server Management
+
+A helper script is installed on the host server for one-command deployments:
+
+```bash
+updatedropzone
+```
+
+This pulls the latest from `main`, resets the working tree, and rebuilds the Docker containers automatically.
 
 ## Folder Structure
 ```
