@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -55,7 +56,16 @@ export default function LoginPage() {
             {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Create Account'}
           </button>
         </form>
-        <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>
+
+        {mode === 'login' && (
+          <p style={{ marginTop: '0.75rem', fontSize: '0.82rem', textAlign: 'center' }}>
+            <Link href="/forgot-password" style={{ color: 'var(--color-text-muted)', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+              Forgot your password?
+            </Link>
+          </p>
+        )}
+
+        <p style={{ marginTop: '0.75rem', fontSize: '0.85rem', color: 'var(--color-text-muted)', textAlign: 'center' }}>
           {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
           <button onClick={() => setMode(m => m === 'login' ? 'register' : 'login')} style={{ color: 'var(--color-accent)', fontWeight: 500 }}>
             {mode === 'login' ? 'Sign up' : 'Sign in'}
