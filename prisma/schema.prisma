@@ -67,6 +67,7 @@ model Post {
   groupId     String
 
   reactions   Reaction[]
+  shareTokens ShareToken[]
 }
 
 model Reaction {
@@ -80,4 +81,13 @@ model Reaction {
   postId    String
 
   @@unique([userId, postId, emoji])
+}
+
+model ShareToken {
+  id        String    @id @default(cuid())
+  token     String    @unique @default(cuid())
+  postId    String
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
 }
