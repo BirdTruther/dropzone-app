@@ -10,12 +10,12 @@ import { getEmbed } from '@/lib/embed';
 interface Author { id: string; name: string; avatar?: string; }
 interface Reaction { id: string; emoji: string; userId: string; }
 interface Post { id: string; url: string; title?: string; description?: string; image?: string; siteName?: string; note?: string; uploadUrl?: string; uploadType?: string; expiresAt?: string; createdAt: string; author: Author; reactions: Reaction[]; }
-interface GroupData { id: string; name: string; emoji: string; inviteCode: string; description?: string; role?: string; }
+interface GroupData { id: string; name: string; emoji: string; inviteCode: string; description?: string; role?: string; openInvite?: boolean; }
+interface Member { id: string; name: string; avatar?: string; email: string; role: string; joinedAt: string; }
 
 const REACTION_OPTIONS = ['❤️', '😂', '🔥', '👀', '😮', '👍'];
 const EMOJI_OPTIONS = ['🔗','🎮','🎵','🎬','📚','💡','🏆','🌍','🍕','😂','🔥','💬','📸','🎨','⚽','🐦','🚀','🛠️','💎','🌙'];
 
-// Deterministic color from name for avatar fallback
 function avatarColor(name: string) {
   const colors = ['#5b6af7','#e05c9a','#f97316','#22c55e','#06b6d4','#a855f7','#eab308','#ef4444'];
   let hash = 0;
@@ -27,23 +27,18 @@ function AuthorAvatar({ author }: { author: Author }) {
   const [imgFailed, setImgFailed] = useState(false);
   const initial = (author.name ?? '?')[0].toUpperCase();
   const bg = avatarColor(author.name ?? '');
-
   if (author.avatar && !imgFailed) {
-    return (
-      <img
-        src={author.avatar}
-        alt={author.name}
-        onError={() => setImgFailed(true)}
-        style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1.5px solid var(--color-border)' }}
-      />
-    );
+    return <img src={author.avatar} alt={author.name} onError={() => setImgFailed(true)}
+      style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1.5px solid var(--color-border)' }} />;
   }
-  return (
-    <div style={{ width: 28, height: 28, borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#fff', flexShrink: 0, border: '1.5px solid var(--color-border)' }}>
-      {initial}
-    </div>
-  );
+  return <div style={{ width: 28, height: 28, borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#fff', flexShrink: 0, border: '1.5px solid var(--color-border)' }}>{initial}</div>;
 }
+
+const ROLE_BADGE: Record<string, React.CSSProperties> = {
+  owner: { background: 'rgba(234,179,8,0.15)', color: '#ca8a04', border: '1px solid rgba(234,179,8,0.3)' },
+  admin: { background: 'rgba(91,106,247,0.15)', color: 'var(--color-accent, #5b6af7)', border: '1px solid rgba(91,106,247,0.3)' },
+  member: { background: 'var(--color-surface-2)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' },
+};
 
 export default function GroupPage() {
   const { data: session, status } = useSession();
@@ -67,8 +62,14 @@ export default function GroupPage() {
   const [editName, setEditName] = useState('');
   const [editEmoji, setEditEmoji] = useState('');
   const [editDesc, setEditDesc] = useState('');
+  const [editOpenInvite, setEditOpenInvite] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editMsg, setEditMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+  const [showMembers, setShowMembers] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [removingMember, setRemovingMember] = useState<string | null>(null);
 
   const loadPosts = useCallback(async () => {
     const res = await fetch(`/api/groups/${groupId}/posts`);
@@ -94,7 +95,8 @@ export default function GroupPage() {
 
   function openEdit() {
     if (!group) return;
-    setEditName(group.name); setEditEmoji(group.emoji); setEditDesc(group.description ?? '');
+    setEditName(group.name); setEditEmoji(group.emoji);
+    setEditDesc(group.description ?? ''); setEditOpenInvite(group.openInvite ?? false);
     setEditMsg(null); setShowEdit(true);
   }
 
@@ -102,13 +104,32 @@ export default function GroupPage() {
     e.preventDefault(); setEditLoading(true); setEditMsg(null);
     const res = await fetch(`/api/groups/${groupId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: editName, emoji: editEmoji, description: editDesc }),
+      body: JSON.stringify({ name: editName, emoji: editEmoji, description: editDesc, openInvite: editOpenInvite }),
     });
     const data = await res.json(); setEditLoading(false);
     if (!res.ok) return setEditMsg({ type: 'err', text: data.error ?? 'Something went wrong' });
-    setGroup(prev => prev ? { ...prev, name: data.name, emoji: data.emoji, description: data.description } : prev);
+    setGroup(prev => prev ? { ...prev, name: data.name, emoji: data.emoji, description: data.description, openInvite: data.openInvite } : prev);
     setEditMsg({ type: 'ok', text: 'Group updated!' });
     setTimeout(() => setShowEdit(false), 800);
+  }
+
+  async function openMembers() {
+    setShowMembers(true);
+    if (members.length > 0) return;
+    setMembersLoading(true);
+    const res = await fetch(`/api/groups/${groupId}/members`);
+    if (res.ok) setMembers(await res.json());
+    setMembersLoading(false);
+  }
+
+  async function removeMember(targetId: string) {
+    setRemovingMember(targetId);
+    const res = await fetch(`/api/groups/${groupId}/members`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetUserId: targetId }),
+    });
+    if (res.ok) setMembers(prev => prev.filter(m => m.id !== targetId));
+    setRemovingMember(null);
   }
 
   async function submitPost(e: React.FormEvent) {
@@ -172,7 +193,9 @@ export default function GroupPage() {
 
   if (status === 'loading' || !group) return <div style={{ padding: '2rem', color: 'var(--color-text-muted)' }}>Loading...</div>;
 
-  const canEdit = group.role === 'owner' || group.role === 'admin';
+  const isOwner = group.role === 'owner';
+  const canEdit = isOwner || group.role === 'admin';
+  const canInvite = isOwner || (group.openInvite ?? false);
 
   return (
     <div style={{ maxWidth: 700, margin: '0 auto', padding: '1rem' }}>
@@ -205,6 +228,13 @@ export default function GroupPage() {
                 <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>Description <span style={{ opacity: 0.5 }}>(optional)</span></label>
                 <input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="What's this group about?" />
               </div>
+              {isOwner && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', fontSize: '0.875rem' }}>
+                  <input type="checkbox" checked={editOpenInvite} onChange={e => setEditOpenInvite(e.target.checked)}
+                    style={{ width: 16, height: 16, accentColor: 'var(--color-accent, #5b6af7)', cursor: 'pointer' }} />
+                  <span>Allow any member to invite others</span>
+                </label>
+              )}
               {editMsg && (
                 <div style={{ padding: '0.6rem 0.9rem', borderRadius: 'var(--radius-sm)', fontSize: '0.875rem', background: editMsg.type === 'ok' ? 'rgba(91,106,247,0.12)' : 'rgba(224,92,92,0.12)', color: editMsg.type === 'ok' ? 'var(--color-accent)' : 'var(--color-danger)' }}>
                   {editMsg.text}
@@ -219,6 +249,47 @@ export default function GroupPage() {
         </div>
       )}
 
+      {/* Members Modal */}
+      {showMembers && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', padding: '1rem' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowMembers(false); }}>
+          <div style={{ width: '100%', maxWidth: 480, background: 'var(--color-surface)', borderRadius: 'var(--radius-xl) var(--radius-xl) var(--radius-lg) var(--radius-lg)', border: '1px solid var(--color-border)', overflow: 'hidden', maxHeight: '70vh', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.2s cubic-bezier(0.16,1,0.3,1)' }}>
+            <style>{`@keyframes slideUp { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }`}</style>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.25rem', borderBottom: '1px solid var(--color-border)' }}>
+              <div>
+                <h3 style={{ fontWeight: 700, fontSize: '1rem' }}>Members</h3>
+                <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{members.length} {members.length === 1 ? 'person' : 'people'} in this group</p>
+              </div>
+              <button onClick={() => setShowMembers(false)} style={{ color: 'var(--color-text-muted)', fontSize: '1.2rem', lineHeight: 1, padding: '0.25rem' }}>✕</button>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {membersLoading && <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', padding: '1rem 0', textAlign: 'center' }}>Loading...</p>}
+              {members.map(m => (
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem', borderRadius: 'var(--radius-sm)' }}>
+                  {m.avatar
+                    ? <img src={m.avatar} alt={m.name} style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                    : <div style={{ width: 34, height: 34, borderRadius: '50%', background: avatarColor(m.name), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>{m.name[0].toUpperCase()}</div>
+                  }
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{m.name}{m.id === userId && <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', fontSize: '0.8rem' }}> (you)</span>}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Joined {new Date(m.joinedAt).toLocaleDateString()}</div>
+                  </div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', textTransform: 'capitalize', ...ROLE_BADGE[m.role] ?? ROLE_BADGE.member }}>
+                    {m.role}
+                  </span>
+                  {isOwner && m.id !== userId && (
+                    <button onClick={() => removeMember(m.id)} disabled={removingMember === m.id}
+                      style={{ fontSize: '0.75rem', padding: '0.25rem 0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(224,92,92,0.3)', background: 'rgba(224,92,92,0.08)', color: 'var(--color-danger, #e05c5c)', cursor: 'pointer', flexShrink: 0 }}>
+                      {removingMember === m.id ? '...' : 'Remove'}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', paddingBottom: '1rem', borderBottom: '1px solid var(--color-border)' }}>
         <Link href="/groups" style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>← Back</Link>
@@ -229,7 +300,10 @@ export default function GroupPage() {
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           {canEdit && <button className="btn btn-ghost" onClick={openEdit} style={{ fontSize: '0.8rem' }}>⚙️ Edit</button>}
-          <button className="btn btn-ghost" onClick={copyInvite} style={{ fontSize: '0.8rem' }}>{copied ? '✅ Copied!' : '🔗 Invite'}</button>
+          <button className="btn btn-ghost" onClick={openMembers} style={{ fontSize: '0.8rem' }}>👥 Members</button>
+          {canInvite && (
+            <button className="btn btn-ghost" onClick={copyInvite} style={{ fontSize: '0.8rem' }}>{copied ? '✅ Copied!' : '🔗 Invite'}</button>
+          )}
         </div>
       </div>
 
@@ -288,8 +362,6 @@ export default function GroupPage() {
             const isMyPost = post.author.id === userId;
             return (
               <div key={post.id} className="card" style={{ padding: '0.9rem', opacity: deletingId === post.id ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-
-                {/* Post header with avatar */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <AuthorAvatar author={post.author} />
@@ -299,10 +371,7 @@ export default function GroupPage() {
                     {post.expiresAt && <span style={{ fontSize: '0.72rem', color: 'var(--color-text-faint)' }}>⏳ {expiresIn(post.expiresAt)}</span>}
                     <span>{timeAgo(post.createdAt)}</span>
                     {isMyPost && (
-                      <button
-                        onClick={() => deletePost(post.id)}
-                        disabled={deletingId === post.id}
-                        title="Delete post"
+                      <button onClick={() => deletePost(post.id)} disabled={deletingId === post.id} title="Delete post"
                         style={{ color: 'var(--color-danger, #e05c5c)', fontSize: '0.8rem', opacity: 0.6, cursor: 'pointer', padding: '0 0.2rem', lineHeight: 1, background: 'none', border: 'none', transition: 'opacity 0.12s' }}
                         onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
                         onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}>
@@ -314,21 +383,17 @@ export default function GroupPage() {
 
                 {post.note && <p style={{ marginBottom: '0.6rem', fontSize: '0.9rem' }}>{post.note}</p>}
 
-                {/* Uploaded video */}
                 {post.uploadType === 'video' && post.uploadUrl && (
                   <video controls style={{ width: '100%', borderRadius: 8, marginBottom: '0.5rem', maxHeight: 400, background: '#000' }}>
                     <source src={post.uploadUrl} />
                   </video>
                 )}
-
-                {/* Uploaded image */}
                 {post.uploadType === 'image' && post.uploadUrl && (
                   <div style={{ position: 'relative', width: '100%', marginBottom: '0.5rem' }}>
                     <img src={post.uploadUrl} alt="uploaded" style={{ width: '100%', borderRadius: 8, maxHeight: 500, objectFit: 'cover' }} />
                   </div>
                 )}
 
-                {/* Link embed or card */}
                 {!post.uploadUrl && post.url && (
                   hasEmbed ? <PostEmbed url={post.url} /> : (
                     <a href={post.url} target="_blank" rel="noopener noreferrer">
