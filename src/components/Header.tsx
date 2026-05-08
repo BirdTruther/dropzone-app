@@ -17,7 +17,7 @@ export default function Header() {
       .catch(() => {});
   }, [user]);
 
-  // Poll for unread notifications every 30s
+  // Poll for unread notifications every 15s (matches group page activity refresh)
   useEffect(() => {
     if (!user) return;
     const fetchUnread = () =>
@@ -26,7 +26,7 @@ export default function Header() {
         .then(d => setUnread(d.unread ?? 0))
         .catch(() => {});
     fetchUnread();
-    const interval = setInterval(fetchUnread, 30000);
+    const interval = setInterval(fetchUnread, 15000);
     return () => clearInterval(interval);
   }, [user]);
 
