@@ -75,8 +75,8 @@ export default function Header() {
               {unread > 0 && (
                 <span style={{
                   position: 'absolute',
-                  top: 4,
-                  right: 4,
+                  top: 0,
+                  right: -4,
                   minWidth: 16,
                   height: 16,
                   borderRadius: '9999px',
@@ -90,6 +90,7 @@ export default function Header() {
                   padding: '0 3px',
                   lineHeight: 1,
                   border: '2px solid rgba(15,15,15,0.85)',
+                  pointerEvents: 'none',
                 }}>
                   {unread > 9 ? '9+' : unread}
                 </span>
