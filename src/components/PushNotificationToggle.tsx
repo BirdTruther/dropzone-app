@@ -30,12 +30,12 @@ export default function PushNotificationToggle() {
       setPermission(perm);
       if (perm !== 'granted') { setLoading(false); return; }
 
+      const keyString = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
+      const applicationServerKey = urlBase64ToUint8Array(keyString).buffer as ArrayBuffer;
+
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        // VAPID public key — replace with your own from: npx web-push generate-vapid-keys
-        applicationServerKey: urlBase64ToUint8Array(
-          process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
-        ),
+        applicationServerKey,
       });
 
       await fetch('/api/push/subscribe', {
@@ -84,7 +84,7 @@ export default function PushNotificationToggle() {
       <div>
         <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>Push Notifications</div>
         <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-          {subscribed ? 'You\'ll get notified even when the tab is closed.' : 'Get notified about reactions and new drops.'}
+          {subscribed ? "You'll get notified even when the tab is closed." : 'Get notified about reactions and new drops.'}
         </div>
       </div>
       <button
