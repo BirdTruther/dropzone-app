@@ -3,8 +3,9 @@
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import PushNotificationToggle from '@/components/PushNotificationToggle';
 
-type SectionKey = 'profile' | 'password' | 'delete';
+type SectionKey = 'profile' | 'password' | 'notifications' | 'delete';
 
 export default function ProfilePage() {
   const { data: session, status, update } = useSession();
@@ -143,9 +144,10 @@ export default function ProfilePage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem' }}>
+      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', borderBottom: '1px solid var(--color-border)', paddingBottom: '0.75rem', flexWrap: 'wrap' }}>
         <button style={tabStyle('profile')} onClick={() => setActiveSection('profile')}>Profile</button>
         <button style={tabStyle('password')} onClick={() => setActiveSection('password')}>Password</button>
+        <button style={tabStyle('notifications')} onClick={() => setActiveSection('notifications')}>Notifications</button>
         <button style={tabStyle('delete')} onClick={() => setActiveSection('delete')}>Delete Account</button>
       </div>
 
@@ -194,6 +196,16 @@ export default function ProfilePage() {
             {passwordLoading ? 'Updating...' : 'Change Password'}
           </button>
         </form>
+      )}
+
+      {/* Notifications Section */}
+      {activeSection === 'notifications' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
+            Enable push notifications to get alerted about new drops and reactions even when dropzone isn’t open.
+          </p>
+          <PushNotificationToggle />
+        </div>
       )}
 
       {/* Delete Account Section */}
