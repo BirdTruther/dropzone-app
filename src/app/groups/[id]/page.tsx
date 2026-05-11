@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import PostEmbed from '@/components/PostEmbed';
 import { getEmbed } from '@/lib/embed';
+import { timeAgo, isoDate, fullDate } from '@/lib/timeAgo';
 
 interface Author { id: string; name: string; avatar?: string; }
 interface Reaction { id: string; emoji: string; userId: string; }
@@ -194,14 +195,6 @@ export default function GroupPage() {
     if (group) { navigator.clipboard.writeText(group.inviteCode); setCopied(true); setTimeout(() => setCopied(false), 2000); }
   }
 
-  function timeAgo(date: string) {
-    const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
-    if (seconds < 60) return 'just now';
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-    return `${Math.floor(seconds / 86400)}d ago`;
-  }
-
   if (status === 'loading' || !group) return <div style={{ padding: '2rem', color: 'var(--color-text-muted)' }}>Loading...</div>;
 
   const isOwner = group.role === 'owner';
@@ -379,7 +372,13 @@ export default function GroupPage() {
                     <span style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{post.author.name}</span>
                   </div>
                   <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                    <span>{timeAgo(post.createdAt)}</span>
+                    <time
+                      dateTime={isoDate(post.createdAt)}
+                      title={fullDate(post.createdAt)}
+                      style={{ cursor: 'default' }}
+                    >
+                      {timeAgo(post.createdAt)}
+                    </time>
                     {/* Share button — available to all group members */}
                     <button
                       onClick={() => sharePost(post.id)}
