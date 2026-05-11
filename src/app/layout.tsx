@@ -3,6 +3,7 @@ import './globals.css';
 import { Providers } from '@/components/Providers';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import BackToTop from '@/components/BackToTop';
 
 export const metadata: Metadata = {
   title: 'dropzone',
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Header />
           <main style={{ flex: 1 }}>{children}</main>
           <Footer />
+          <BackToTop />
         </Providers>
       </body>
     </html>
