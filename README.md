@@ -97,16 +97,6 @@ Dropzone supports Web Push notifications via the [Web Push Protocol](https://www
 - iOS 16.4+ supports push notifications for installed PWAs (added to home screen)
 - Expired or revoked subscriptions are automatically cleaned up
 
-## Server Management
-
-A helper script is installed on the host server for one-command deployments:
-
-```bash
-updatedropzone
-```
-
-This pulls the latest from `main`, resets the working tree, and rebuilds the Docker containers automatically.
-
 ## Folder Structure
 ```
 src/
