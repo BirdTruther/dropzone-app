@@ -8,6 +8,7 @@ A private group link-sharing web app. Share links, videos, and images with frien
 - **Prisma ORM**
 - **NextAuth.js** (credentials auth)
 - **open-graph-scraper** (link previews)
+- **web-push** (push notifications via VAPID)
 - **Docker Compose** (app + database)
 
 ## Features
@@ -19,6 +20,7 @@ A private group link-sharing web app. Share links, videos, and images with frien
 - 👥 Private invite-only groups
 - 🗑️ Authors can delete their own posts
 - 📱 PWA — installable on iOS and Android
+- 🔔 Push notifications — get alerted about new drops and reactions even when the app is closed
 - 🌙 Dark mode
 
 ## Admin Panel
@@ -55,17 +57,45 @@ cp .env.example .env
 
 > ⚠️ Make sure `NEXTAUTH_URL` is set to your full `https://` domain (e.g. `https://link.yourserver.com`). Discord and other platforms require HTTPS for image embeds.
 
-### 3. Run with Docker
+### 3. Generate VAPID Keys (for push notifications)
+
+Push notifications require a one-time key generation step:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Add the output to your `.env`:
+
+```env
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=your_public_key
+VAPID_PRIVATE_KEY=your_private_key
+VAPID_MAILTO=mailto:you@example.com
+```
+
+> Push notifications will be silently skipped if these keys are not set — the rest of the app works normally without them.
+
+### 4. Run with Docker
 ```bash
 sudo docker compose up -d
 ```
 
 App runs at: `http://localhost:3000`
 
-### 4. Run DB Migrations
+### 5. Run DB Migrations
 ```bash
 sudo docker compose exec app npx prisma migrate deploy
 ```
+
+## Push Notifications
+
+Dropzone supports Web Push notifications via the [Web Push Protocol](https://www.rfc-editor.org/rfc/rfc8030) and VAPID authentication.
+
+- Users opt in per-device from **Profile → Notifications**
+- Notifications fire when someone drops a link in a shared group or reacts to your post
+- Works on desktop (Chrome, Firefox, Edge) and Android Chrome
+- iOS 16.4+ supports push notifications for installed PWAs (added to home screen)
+- Expired or revoked subscriptions are automatically cleaned up
 
 ## Server Management
 
@@ -84,12 +114,16 @@ src/
     (auth)/login/       # Login + forgot password pages
     admin/              # Admin panel (users & posts)
     groups/             # Groups list + group feed
-    profile/            # Profile + change password
-    api/                # API routes
+    profile/            # Profile, password, notifications settings
+    api/
+      push/subscribe/   # Save / remove push subscriptions
     share/[token]/      # Public share preview page
     forgot-password/    # Lockout help page
-  components/           # Reusable UI components
-  lib/                  # DB, auth, utils
+  components/
+    PushNotificationToggle.tsx  # Enable/disable push per device
+  lib/
+    notifications.ts    # createNotification() — saves to DB + fires push
+    sendPush.ts         # web-push wrapper, auto-cleans expired subs
 prisma/
   schema.prisma         # Database schema
 docker-compose.yml

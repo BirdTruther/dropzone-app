@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.0 — May 10, 2026
+- Added Web Push notifications — users are now notified about new drops and reactions even when the app is closed
+- Push opt-in toggle added to Profile → Notifications tab
+- Push subscriptions stored per-device in the database (PushSubscription model)
+- Notifications automatically trigger a push via VAPID/web-push when created
+- Expired or revoked push subscriptions are automatically cleaned up (410 Gone handling)
+- VAPID key placeholders added to `.env.example` with setup instructions
+- Push notifications work on desktop browsers and Android Chrome; iOS 16.4+ supported when installed as PWA
+
 ## v0.6.0 — May 7, 2026
 - Added share link feature — generate a public, tokenized share URL for any post
 - Share links load a clean public preview page with the image, video, author info, and note
