@@ -1,6 +1,6 @@
 # dropzone
 
-A private group link-sharing web app. Share links, videos, and images with friends — get rich previews, react to posts, and keep your feed alive indefinitely.
+A private group link-sharing web app. Share links, videos, and images with friends — get rich previews, react to posts, comment on drops, and keep your feed alive indefinitely.
 
 ## Stack
 - **Next.js 14** (App Router, standalone output)
@@ -17,6 +17,7 @@ A private group link-sharing web app. Share links, videos, and images with frien
 - ♾️ Uploads kept indefinitely — no expiry
 - 🔗 Share links — generate a public preview URL for any post that embeds in Discord
 - ❤️ Emoji reactions on posts
+- 💬 Comments on posts — threaded discussion per drop with delete support
 - 👥 Private invite-only groups
 - 🗑️ Authors can delete their own posts
 - 📱 PWA — installable on iOS and Android
@@ -82,10 +83,21 @@ sudo docker compose up -d
 
 App runs at: `http://localhost:3000`
 
-### 5. Run DB Migrations
+### 5. Sync Database Schema
 ```bash
-sudo docker compose exec app npx prisma migrate deploy
+sudo docker exec -it dropzone-app npx prisma db push
 ```
+
+> The app uses `prisma db push` for schema sync — no migration files required. Run this once after first deploy and after any schema changes.
+
+## Comments
+
+Each post has a collapsible comment thread accessible via the 💬 button.
+
+- **Post a comment** — type and hit Enter (Shift+Enter for newlines)
+- **Delete a comment** — available to the comment author, the post author, and group admins/owners
+- **Notifications** — post authors receive an in-app notification when someone comments on their drop
+- Comments display relative timestamps (e.g. "2 hours ago") with a full date on hover
 
 ## Push Notifications
 
@@ -106,12 +118,17 @@ src/
     groups/             # Groups list + group feed
     profile/            # Profile, password, notifications settings
     api/
+      posts/[id]/
+        comments/       # GET + POST comments on a post
+        comments/[commentId]/  # DELETE a comment
       push/subscribe/   # Save / remove push subscriptions
     share/[token]/      # Public share preview page
     forgot-password/    # Lockout help page
   components/
+    CommentThread.tsx           # Collapsible comment thread component
     PushNotificationToggle.tsx  # Enable/disable push per device
   lib/
+    timeAgo.ts          # Relative timestamp utility (timeAgo, isoDate, fullDate)
     notifications.ts    # createNotification() — saves to DB + fires push
     sendPush.ts         # web-push wrapper, auto-cleans expired subs
 prisma/

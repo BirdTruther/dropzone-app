@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.8.0 — May 11, 2026
+- Added comments on posts — each post now has a collapsible 💬 comment thread
+- Comment authors, post authors, and group admins/owners can delete any comment
+- Post authors receive an in-app notification when someone comments on their drop
+- Comments display relative timestamps (e.g. "2 hours ago") with full date on hover via `<time>` element
+- Extracted shared `timeAgo` utility (`src/lib/timeAgo.ts`) used across posts and comments
+- Comment input supports Enter to send and Shift+Enter for newlines
+- Optimistic UI — comment appears instantly while the request is in flight
+
 ## v0.7.0 — May 10, 2026
 - Added Web Push notifications — users are now notified about new drops and reactions even when the app is closed
 - Push opt-in toggle added to Profile → Notifications tab
