@@ -23,6 +23,10 @@ export default function Footer() {
           Privacy Policy
         </Link>
         <span aria-hidden="true">·</span>
+        <Link href="/terms" style={{ color: 'inherit' }}>
+          Terms of Service
+        </Link>
+        <span aria-hidden="true">·</span>
         <Link href="/data-deletion" style={{ color: 'inherit' }}>
           Data Deletion
         </Link>
