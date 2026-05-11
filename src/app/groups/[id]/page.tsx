@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import PostEmbed from '@/components/PostEmbed';
+import PullToRefresh from '@/components/PullToRefresh';
 import { getEmbed } from '@/lib/embed';
 import { timeAgo, isoDate, fullDate } from '@/lib/timeAgo';
 
@@ -202,6 +203,7 @@ export default function GroupPage() {
   const canInvite = isOwner || (group.openInvite ?? false);
 
   return (
+    <PullToRefresh onRefresh={loadPosts}>
     <div style={{ maxWidth: 700, margin: '0 auto', padding: '1rem' }}>
 
       {/* Edit Modal */}
@@ -230,7 +232,7 @@ export default function GroupPage() {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>Description <span style={{ opacity: 0.5 }}>(optional)</span></label>
-                <input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="What's this group about?" />
+                <input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="What\'s this group about?" />
               </div>
               {isOwner && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', fontSize: '0.875rem' }}>
@@ -379,7 +381,6 @@ export default function GroupPage() {
                     >
                       {timeAgo(post.createdAt)}
                     </time>
-                    {/* Share button — available to all group members */}
                     <button
                       onClick={() => sharePost(post.id)}
                       disabled={sharingId === post.id}
@@ -454,5 +455,6 @@ export default function GroupPage() {
         </div>
       )}
     </div>
+    </PullToRefresh>
   );
 }
