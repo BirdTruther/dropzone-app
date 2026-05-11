@@ -10,7 +10,7 @@ interface Props {
   postId: string;
   currentUserId: string;
   postAuthorId: string;
-  userRole?: string; // 'owner' | 'admin' | 'member'
+  userRole?: string;
   initialCount?: number;
 }
 
@@ -58,7 +58,6 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
     if (open && !loaded) load();
   }, [open, loaded, load]);
 
-  // Scroll to bottom when thread opens or new comment added
   useEffect(() => {
     if (open) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
   }, [open, comments.length]);
@@ -69,7 +68,6 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
     setSubmitting(true);
     setError(null);
 
-    // Optimistic
     const optimistic: Comment = {
       id: `optimistic-${Date.now()}`,
       body: body.trim(),
@@ -90,7 +88,6 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
       const real: Comment = await res.json();
       setComments(prev => prev.map(c => c.id === optimistic.id ? real : c));
     } else {
-      // Rollback
       setComments(prev => prev.filter(c => c.id !== optimistic.id));
       setCount(c => c - 1);
       const d = await res.json();
@@ -124,7 +121,6 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
 
   return (
     <div style={{ marginTop: '0.5rem' }}>
-      {/* Toggle button */}
       <button
         onClick={() => { setOpen(o => !o); if (!open) setTimeout(() => inputRef.current?.focus(), 120); }}
         style={{
@@ -142,7 +138,6 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
         <span style={{ fontSize: '0.65rem', opacity: 0.6, transition: 'transform 0.15s', display: 'inline-block', transform: open ? 'rotate(180deg)' : 'none' }}>▼</span>
       </button>
 
-      {/* Thread panel */}
       {open && (
         <div style={{
           marginTop: '0.6rem',
@@ -160,7 +155,6 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
             }
           `}</style>
 
-          {/* Comment list */}
           {!loaded && (
             <div style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem', padding: '0.5rem 0' }}>Loading...</div>
           )}
@@ -204,7 +198,6 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
 
           <div ref={bottomRef} />
 
-          {/* Composer */}
           {error && <p style={{ fontSize: '0.78rem', color: 'var(--color-danger, #e05c5c)' }}>{error}</p>}
           <form onSubmit={submit} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
             <textarea
@@ -216,21 +209,12 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
               rows={1}
               disabled={submitting}
               style={{
-                flex: 1,
-                resize: 'none',
-                fontSize: '0.85rem',
-                padding: '0.45rem 0.7rem',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-border)',
-                background: 'var(--color-surface-2)',
-                color: 'var(--color-text)',
-                outline: 'none',
-                lineHeight: 1.5,
-                transition: 'border-color 0.12s',
-                fontFamily: 'inherit',
-                minHeight: 36,
-                maxHeight: 120,
-                overflowY: 'auto',
+                flex: 1, resize: 'none', fontSize: '0.85rem',
+                padding: '0.45rem 0.7rem', borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
+                color: 'var(--color-text)', outline: 'none', lineHeight: 1.5,
+                transition: 'border-color 0.12s', fontFamily: 'inherit',
+                minHeight: 36, maxHeight: 120, overflowY: 'auto',
               }}
               onFocus={e => (e.currentTarget.style.borderColor = 'var(--color-accent, #5b6af7)')}
               onBlur={e => (e.currentTarget.style.borderColor = 'var(--color-border)')}
