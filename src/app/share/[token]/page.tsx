@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { timeAgo, isoDate, fullDate } from '@/lib/timeAgo';
 
 const BASE_URL = process.env.NEXTAUTH_URL ?? 'https://link.birdsserver.cfd';
 
@@ -101,6 +102,13 @@ export default async function SharePage({ params }: { params: { token: string } 
                 : <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#5b6af7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#fff' }}>{post.author.name[0].toUpperCase()}</div>
               }
               <span style={{ fontSize: '0.85rem', color: '#aaa' }}>{post.author.name} shared via dropzone</span>
+              <time
+                dateTime={isoDate(post.createdAt)}
+                title={fullDate(post.createdAt)}
+                style={{ fontSize: '0.78rem', color: '#555', marginLeft: 'auto', cursor: 'default', flexShrink: 0 }}
+              >
+                {timeAgo(post.createdAt)}
+              </time>
             </div>
 
             {post.note && <p style={{ fontSize: '0.95rem', color: '#fff', marginBottom: '0.5rem' }}>{post.note}</p>}
