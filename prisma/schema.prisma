@@ -20,6 +20,7 @@ model User {
   memberships       GroupMember[]
   posts             Post[]
   reactions         Reaction[]
+  comments          Comment[]
   notifications     Notification[]
   pushSubscriptions PushSubscription[]
 }
@@ -70,6 +71,7 @@ model Post {
 
   reactions   Reaction[]
   shareTokens ShareToken[]
+  comments    Comment[]
 }
 
 model Reaction {
@@ -83,6 +85,17 @@ model Reaction {
   postId    String
 
   @@unique([userId, postId, emoji])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  body      String
+  createdAt DateTime @default(now())
+
+  author    User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId  String
+  post      Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String
 }
 
 model ShareToken {

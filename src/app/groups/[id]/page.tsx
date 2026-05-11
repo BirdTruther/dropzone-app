@@ -6,12 +6,18 @@ import Link from 'next/link';
 import Image from 'next/image';
 import PostEmbed from '@/components/PostEmbed';
 import PullToRefresh from '@/components/PullToRefresh';
+import CommentThread from '@/components/CommentThread';
 import { getEmbed } from '@/lib/embed';
 import { timeAgo, isoDate, fullDate } from '@/lib/timeAgo';
 
 interface Author { id: string; name: string; avatar?: string; }
 interface Reaction { id: string; emoji: string; userId: string; }
-interface Post { id: string; url: string; title?: string; description?: string; image?: string; siteName?: string; note?: string; uploadUrl?: string; uploadType?: string; expiresAt?: string; createdAt: string; author: Author; reactions: Reaction[]; }
+interface Post {
+  id: string; url: string; title?: string; description?: string; image?: string;
+  siteName?: string; note?: string; uploadUrl?: string; uploadType?: string;
+  expiresAt?: string; createdAt: string; author: Author; reactions: Reaction[];
+  _count?: { comments: number };
+}
 interface GroupData { id: string; name: string; emoji: string; inviteCode: string; description?: string; role?: string; openInvite?: boolean; }
 interface Member { id: string; name: string; avatar?: string; email: string; role: string; joinedAt: string; }
 
@@ -232,7 +238,7 @@ export default function GroupPage() {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>Description <span style={{ opacity: 0.5 }}>(optional)</span></label>
-                <input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="What\'s this group about?" />
+                <input value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="What's this group about?" />
               </div>
               {isOwner && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', fontSize: '0.875rem' }}>
@@ -368,27 +374,20 @@ export default function GroupPage() {
             const isMyPost = post.author.id === userId;
             return (
               <div key={post.id} className="card" style={{ padding: '0.9rem', opacity: deletingId === post.id ? 0.5 : 1, transition: 'opacity 0.2s' }}>
+                {/* Post header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <AuthorAvatar author={post.author} />
-                    <span style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{post.author.name}</span>
+                    <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{post.author.name}</span>
                   </div>
                   <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                    <time
-                      dateTime={isoDate(post.createdAt)}
-                      title={fullDate(post.createdAt)}
-                      style={{ cursor: 'default' }}
-                    >
+                    <time dateTime={isoDate(post.createdAt)} title={fullDate(post.createdAt)} style={{ cursor: 'default' }}>
                       {timeAgo(post.createdAt)}
                     </time>
-                    <button
-                      onClick={() => sharePost(post.id)}
-                      disabled={sharingId === post.id}
-                      title="Copy share link"
+                    <button onClick={() => sharePost(post.id)} disabled={sharingId === post.id} title="Copy share link"
                       style={{ fontSize: '0.8rem', opacity: 0.6, cursor: 'pointer', padding: '0 0.2rem', lineHeight: 1, background: 'none', border: 'none', transition: 'opacity 0.12s', color: sharedId === post.id ? 'var(--color-accent, #5b6af7)' : 'var(--color-text-muted)' }}
                       onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                      onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}
-                    >
+                      onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}>
                       {sharingId === post.id ? '⏳' : sharedId === post.id ? '✅' : '🔗'}
                     </button>
                     {isMyPost && (
@@ -410,9 +409,7 @@ export default function GroupPage() {
                   </video>
                 )}
                 {post.uploadType === 'image' && post.uploadUrl && (
-                  <div style={{ position: 'relative', width: '100%', marginBottom: '0.5rem' }}>
-                    <img src={post.uploadUrl} alt="uploaded" style={{ width: '100%', borderRadius: 8, maxHeight: 500, objectFit: 'cover' }} />
-                  </div>
+                  <img src={post.uploadUrl} alt="uploaded" style={{ width: '100%', borderRadius: 8, maxHeight: 500, objectFit: 'cover', marginBottom: '0.5rem' }} />
                 )}
 
                 {!post.uploadUrl && post.url && (
@@ -441,6 +438,7 @@ export default function GroupPage() {
                   </a>
                 )}
 
+                {/* Reactions */}
                 <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.65rem', flexWrap: 'wrap' }}>
                   {REACTION_OPTIONS.map(emoji => (
                     <button key={emoji} onClick={() => toggleReaction(post.id, emoji)}
@@ -449,6 +447,15 @@ export default function GroupPage() {
                     </button>
                   ))}
                 </div>
+
+                {/* Comments */}
+                <CommentThread
+                  postId={post.id}
+                  currentUserId={userId}
+                  postAuthorId={post.author.id}
+                  userRole={group.role}
+                  initialCount={post._count?.comments ?? 0}
+                />
               </div>
             );
           })}
