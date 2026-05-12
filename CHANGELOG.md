@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.9.0 — May 12, 2026
+## v0.85.0 — May 12, 2026
 - Added notification preferences — per-type Push and In-App toggles in Profile → Notifications
 - Notification types: New drop, Reaction, Comment, Mention — each independently controllable
 - Toggles save instantly with a subtle ✓ confirmation; opt-out model (all on by default for existing users)
