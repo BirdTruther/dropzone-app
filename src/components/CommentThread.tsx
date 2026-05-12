@@ -4,10 +4,18 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { timeAgo, isoDate, fullDate } from '@/lib/timeAgo';
 
 interface CommentAuthor { id: string; name: string; avatar?: string; }
-interface Comment { id: string; body: string; createdAt: string; author: CommentAuthor; }
+interface Comment {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: CommentAuthor;
+  mentions?: string[];
+}
+interface GroupMember { id: string; name: string; avatar?: string; }
 
 interface Props {
   postId: string;
+  groupId: string;
   currentUserId: string;
   postAuthorId: string;
   userRole?: string;
@@ -21,18 +29,39 @@ function avatarColor(name: string) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-function Avatar({ author }: { author: CommentAuthor }) {
+function Avatar({ author, size = 24 }: { author: GroupMember; size?: number }) {
   const [failed, setFailed] = useState(false);
   const bg = avatarColor(author.name ?? '');
   const initial = (author.name ?? '?')[0].toUpperCase();
   if (author.avatar && !failed) {
     return <img src={author.avatar} alt={author.name} onError={() => setFailed(true)}
-      style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1.5px solid var(--color-border)' }} />;
+      style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1.5px solid var(--color-border)' }} />;
   }
-  return <div style={{ width: 24, height: 24, borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#fff', flexShrink: 0, border: '1.5px solid var(--color-border)' }}>{initial}</div>;
+  return <div style={{ width: size, height: size, borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.38 + 'rem', fontWeight: 700, color: '#fff', flexShrink: 0, border: '1.5px solid var(--color-border)' }}>{initial}</div>;
 }
 
-export default function CommentThread({ postId, currentUserId, postAuthorId, userRole, initialCount = 0 }: Props) {
+// Render comment body with highlighted @mentions
+function CommentBody({ body, mentions, members }: { body: string; mentions?: string[]; members: GroupMember[] }) {
+  if (!mentions || mentions.length === 0) return <p style={{ fontSize: '0.85rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{body}</p>;
+
+  const memberMap = Object.fromEntries(members.map(m => [m.id, m.name]));
+  // Replace @[name](id) tokens with highlighted spans
+  const parts = body.split(/(@\[[^\]]+\]\([^)]+\))/g);
+  return (
+    <p style={{ fontSize: '0.85rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>
+      {parts.map((part, i) => {
+        const match = part.match(/^@\[([^\]]+)\]\(([^)]+)\)$/);
+        if (match) {
+          const [, displayName] = match;
+          return <span key={i} style={{ color: 'var(--color-accent, #5b6af7)', fontWeight: 600 }}>@{displayName}</span>;
+        }
+        return part;
+      })}
+    </p>
+  );
+}
+
+export default function CommentThread({ postId, groupId, currentUserId, postAuthorId, userRole, initialCount = 0 }: Props) {
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [count, setCount] = useState(initialCount);
@@ -41,8 +70,17 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Members for @mention autocomplete
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStart, setMentionStart] = useState<number>(-1);
+  const [pendingMentions, setPendingMentions] = useState<GroupMember[]>([]);
+  const [mentionHighlight, setMentionHighlight] = useState(0);
+
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/posts/${postId}/comments`);
@@ -54,6 +92,14 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
     }
   }, [postId]);
 
+  // Load group members once for mention autocomplete
+  useEffect(() => {
+    fetch(`/api/groups/${groupId}/members`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setMembers)
+      .catch(() => {});
+  }, [groupId]);
+
   useEffect(() => {
     if (open && !loaded) load();
   }, [open, loaded, load]);
@@ -62,26 +108,80 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
     if (open) setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 60);
   }, [open, comments.length]);
 
+  const filteredMembers = mentionQuery !== null
+    ? members.filter(m => m.id !== currentUserId && m.name.toLowerCase().includes(mentionQuery.toLowerCase()))
+    : [];
+
+  function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const val = e.target.value;
+    setBody(val);
+
+    const cursor = e.target.selectionStart ?? val.length;
+    // Find last @ before cursor with no space after it
+    const textBefore = val.slice(0, cursor);
+    const atMatch = textBefore.match(/@([^\s@]*)$/);
+    if (atMatch) {
+      setMentionQuery(atMatch[1]);
+      setMentionStart(cursor - atMatch[0].length);
+      setMentionHighlight(0);
+    } else {
+      setMentionQuery(null);
+    }
+  }
+
+  function selectMention(member: GroupMember) {
+    // Replace the @query with @[name](id) token
+    const before = body.slice(0, mentionStart);
+    const after = body.slice(inputRef.current?.selectionStart ?? body.length);
+    const token = `@[${member.name}](${member.id})`;
+    setBody(before + token + ' ' + after);
+    setPendingMentions(prev => prev.some(m => m.id === member.id) ? prev : [...prev, member]);
+    setMentionQuery(null);
+    setTimeout(() => {
+      inputRef.current?.focus();
+      const pos = before.length + token.length + 1;
+      inputRef.current?.setSelectionRange(pos, pos);
+    }, 0);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionQuery !== null && filteredMembers.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMentionHighlight(h => Math.min(h + 1, filteredMembers.length - 1)); return; }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); setMentionHighlight(h => Math.max(h - 1, 0)); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); selectMention(filteredMembers[mentionHighlight]); return; }
+      if (e.key === 'Escape') { setMentionQuery(null); return; }
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submit(e as any);
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!body.trim() || submitting) return;
     setSubmitting(true);
     setError(null);
+    setMentionQuery(null);
+
+    const mentionedUserIds = pendingMentions.map(m => m.id);
 
     const optimistic: Comment = {
       id: `optimistic-${Date.now()}`,
       body: body.trim(),
       createdAt: new Date().toISOString(),
       author: { id: currentUserId, name: 'You', avatar: undefined },
+      mentions: mentionedUserIds,
     };
     setComments(prev => [...prev, optimistic]);
     setCount(c => c + 1);
     setBody('');
+    setPendingMentions([]);
 
     const res = await fetch(`/api/posts/${postId}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body: optimistic.body }),
+      body: JSON.stringify({ body: optimistic.body, mentionedUserIds }),
     });
 
     if (res.ok) {
@@ -104,13 +204,6 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
       setCount(c => c - 1);
     }
     setDeletingId(null);
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      submit(e as any);
-    }
   }
 
   const canDelete = (comment: Comment) =>
@@ -191,7 +284,7 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
                     >✕</button>
                   )}
                 </div>
-                <p style={{ fontSize: '0.85rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{comment.body}</p>
+                <CommentBody body={comment.body} mentions={comment.mentions} members={members} />
               </div>
             </div>
           ))}
@@ -199,35 +292,63 @@ export default function CommentThread({ postId, currentUserId, postAuthorId, use
           <div ref={bottomRef} />
 
           {error && <p style={{ fontSize: '0.78rem', color: 'var(--color-danger, #e05c5c)' }}>{error}</p>}
-          <form onSubmit={submit} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-            <textarea
-              ref={inputRef}
-              value={body}
-              onChange={e => setBody(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Write a comment… (Enter to send, Shift+Enter for newline)"
-              rows={1}
-              disabled={submitting}
-              style={{
-                flex: 1, resize: 'none', fontSize: '0.85rem',
-                padding: '0.45rem 0.7rem', borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
-                color: 'var(--color-text)', outline: 'none', lineHeight: 1.5,
-                transition: 'border-color 0.12s', fontFamily: 'inherit',
-                minHeight: 36, maxHeight: 120, overflowY: 'auto',
-              }}
-              onFocus={e => (e.currentTarget.style.borderColor = 'var(--color-accent, #5b6af7)')}
-              onBlur={e => (e.currentTarget.style.borderColor = 'var(--color-border)')}
-            />
-            <button
-              type="submit"
-              disabled={!body.trim() || submitting}
-              className="btn btn-primary"
-              style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', flexShrink: 0, opacity: !body.trim() || submitting ? 0.5 : 1 }}
-            >
-              {submitting ? '…' : 'Send'}
-            </button>
-          </form>
+
+          {/* Input area with @mention dropdown */}
+          <div style={{ position: 'relative' }}>
+            {mentionQuery !== null && filteredMembers.length > 0 && (
+              <div ref={dropdownRef} style={{
+                position: 'absolute', bottom: '100%', left: 0, right: 0,
+                background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-md)',
+                zIndex: 50, overflow: 'hidden', marginBottom: '4px',
+              }}>
+                {filteredMembers.map((member, idx) => (
+                  <button
+                    key={member.id}
+                    onMouseDown={e => { e.preventDefault(); selectMention(member); }}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: '0.5rem',
+                      padding: '0.45rem 0.75rem', background: idx === mentionHighlight ? 'var(--color-surface-2)' : 'transparent',
+                      border: 'none', cursor: 'pointer', textAlign: 'left', transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={() => setMentionHighlight(idx)}
+                  >
+                    <Avatar author={member} size={20} />
+                    <span style={{ fontSize: '0.82rem', fontWeight: 500 }}>{member.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <form onSubmit={submit} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+              <textarea
+                ref={inputRef}
+                value={body}
+                onChange={handleInput}
+                onKeyDown={handleKeyDown}
+                placeholder="Write a comment… (@ to mention, Enter to send)"
+                rows={1}
+                disabled={submitting}
+                style={{
+                  flex: 1, resize: 'none', fontSize: '0.85rem',
+                  padding: '0.45rem 0.7rem', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--color-border)', background: 'var(--color-surface-2)',
+                  color: 'var(--color-text)', outline: 'none', lineHeight: 1.5,
+                  transition: 'border-color 0.12s', fontFamily: 'inherit',
+                  minHeight: 36, maxHeight: 120, overflowY: 'auto',
+                }}
+                onFocus={e => (e.currentTarget.style.borderColor = 'var(--color-accent, #5b6af7)')}
+                onBlur={e => (e.currentTarget.style.borderColor = 'var(--color-border)')}
+              />
+              <button
+                type="submit"
+                disabled={!body.trim() || submitting}
+                className="btn btn-primary"
+                style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', flexShrink: 0, opacity: !body.trim() || submitting ? 0.5 : 1 }}
+              >
+                {submitting ? '…' : 'Send'}
+              </button>
+            </form>
+          </div>
         </div>
       )}
     </div>

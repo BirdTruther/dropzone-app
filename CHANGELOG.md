@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.9.0 — May 12, 2026
+- Added notification preferences — per-type Push and In-App toggles in Profile → Notifications
+- Notification types: New drop, Reaction, Comment, Mention — each independently controllable
+- Toggles save instantly with a subtle ✓ confirmation; opt-out model (all on by default for existing users)
+- Added @mention support in comments — type @ to open a member autocomplete dropdown
+- Mentions render as highlighted @name chips in submitted comments
+- Mentioned users receive a dedicated `mention` notification (respects their mention prefs)
+- Mentions are validated server-side — only actual group members can be mentioned
+- Self-mentions silently ignored
+- Added GET /api/user endpoint to load notification prefs
+- Added GET /api/groups/[id]/members endpoint for mention autocomplete
+
 ## v0.8.0 — May 11, 2026
 - Added comments on posts — each post now has a collapsible 💬 comment thread
 - Comment authors, post authors, and group admins/owners can delete any comment

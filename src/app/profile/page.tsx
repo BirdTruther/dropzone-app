@@ -4,6 +4,7 @@ import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import PushNotificationToggle from '@/components/PushNotificationToggle';
+import NotificationPreferences from '@/components/NotificationPreferences';
 
 type SectionKey = 'profile' | 'password' | 'notifications' | 'delete';
 
@@ -14,21 +15,18 @@ export default function ProfilePage() {
 
   const [activeSection, setActiveSection] = useState<SectionKey>('profile');
 
-  // Profile fields
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [avatar, setAvatar] = useState('');
   const [profileMsg, setProfileMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
 
-  // Password fields
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMsg, setPasswordMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [passwordLoading, setPasswordLoading] = useState(false);
 
-  // Delete fields
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteMsg, setDeleteMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -201,10 +199,14 @@ export default function ProfilePage() {
       {/* Notifications Section */}
       {activeSection === 'notifications' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
-            Enable push notifications to get alerted about new drops and reactions even when dropzone isn’t open.
+          <p style={{ fontSize: '0.78rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: '0.25rem' }}>
+            Push Device
+          </p>
+          <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
+            Enable push notifications to get alerted even when dropzone isn't open.
           </p>
           <PushNotificationToggle />
+          <NotificationPreferences />
         </div>
       )}
 
