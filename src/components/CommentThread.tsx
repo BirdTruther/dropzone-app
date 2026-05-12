@@ -37,7 +37,7 @@ function Avatar({ author, size = 24 }: { author: GroupMember; size?: number }) {
     return <img src={author.avatar} alt={author.name} onError={() => setFailed(true)}
       style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1.5px solid var(--color-border)' }} />;
   }
-  return <div style={{ width: size, height: size, borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.38 + 'rem', fontWeight: 700, color: '#fff', flexShrink: 0, border: '1.5px solid var(--color-border)' }}>{initial}</div>;
+  return <div style={{ width: size, height: size, borderRadius: '50%', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: Math.round(size * 0.45) + 'px', fontWeight: 700, color: '#fff', flexShrink: 0, border: '1.5px solid var(--color-border)' }}>{initial}</div>;
 }
 
 // Render comment body with highlighted @mentions
@@ -45,7 +45,6 @@ function CommentBody({ body, mentions, members }: { body: string; mentions?: str
   if (!mentions || mentions.length === 0) return <p style={{ fontSize: '0.85rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{body}</p>;
 
   const memberMap = Object.fromEntries(members.map(m => [m.id, m.name]));
-  // Replace @[name](id) tokens with highlighted spans
   const parts = body.split(/(@\[[^\]]+\]\([^)]+\))/g);
   return (
     <p style={{ fontSize: '0.85rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>
@@ -71,7 +70,6 @@ export default function CommentThread({ postId, groupId, currentUserId, postAuth
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Members for @mention autocomplete
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStart, setMentionStart] = useState<number>(-1);
@@ -92,7 +90,6 @@ export default function CommentThread({ postId, groupId, currentUserId, postAuth
     }
   }, [postId]);
 
-  // Load group members once for mention autocomplete
   useEffect(() => {
     fetch(`/api/groups/${groupId}/members`)
       .then(r => r.ok ? r.json() : [])
@@ -115,9 +112,7 @@ export default function CommentThread({ postId, groupId, currentUserId, postAuth
   function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const val = e.target.value;
     setBody(val);
-
     const cursor = e.target.selectionStart ?? val.length;
-    // Find last @ before cursor with no space after it
     const textBefore = val.slice(0, cursor);
     const atMatch = textBefore.match(/@([^\s@]*)$/);
     if (atMatch) {
@@ -130,7 +125,6 @@ export default function CommentThread({ postId, groupId, currentUserId, postAuth
   }
 
   function selectMention(member: GroupMember) {
-    // Replace the @query with @[name](id) token
     const before = body.slice(0, mentionStart);
     const after = body.slice(inputRef.current?.selectionStart ?? body.length);
     const token = `@[${member.name}](${member.id})`;
@@ -293,7 +287,6 @@ export default function CommentThread({ postId, groupId, currentUserId, postAuth
 
           {error && <p style={{ fontSize: '0.78rem', color: 'var(--color-danger, #e05c5c)' }}>{error}</p>}
 
-          {/* Input area with @mention dropdown */}
           <div style={{ position: 'relative' }}>
             {mentionQuery !== null && filteredMembers.length > 0 && (
               <div ref={dropdownRef} style={{
