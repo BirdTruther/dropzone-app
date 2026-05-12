@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useCallback } from 'react';
 
+const SCROLL_THRESHOLD = 400;
+
 export default function BackToTop() {
   const [visible, setVisible] = useState(false);
 
   const onScroll = useCallback(() => {
-    setVisible(window.scrollY > 400);
+    setVisible(window.scrollY > SCROLL_THRESHOLD);
   }, []);
 
   useEffect(() => {
@@ -19,45 +21,77 @@ export default function BackToTop() {
   };
 
   return (
-    <button
-      onClick={scrollToTop}
-      aria-label="Back to top"
-      style={{
-        position: 'fixed',
-        bottom: '1.5rem',
-        right: '1.5rem',
-        zIndex: 50,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: '2.75rem',
-        height: '2.75rem',
-        borderRadius: '50%',
-        background: '#222',
-        color: '#fff',
-        border: '1px solid rgba(255,255,255,0.12)',
-        boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-        cursor: 'pointer',
-        opacity: visible ? 1 : 0,
-        pointerEvents: visible ? 'auto' : 'none',
-        transform: visible ? 'translateY(0)' : 'translateY(0.75rem)',
-        transition: 'opacity 220ms ease, transform 220ms ease',
-      }}
-    >
-      {/* Up chevron */}
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
+    <>
+      <style>{`
+        .back-to-top {
+          position: fixed;
+          bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+          right: 1.5rem;
+          z-index: 50;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 2.75rem;
+          height: 2.75rem;
+          border-radius: 50%;
+          background: var(--color-surface-2);
+          color: var(--color-text);
+          border: 1px solid var(--color-border);
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+          cursor: pointer;
+          opacity: 0;
+          pointer-events: none;
+          transform: translateY(0.75rem);
+          transition: opacity 220ms ease, transform 220ms ease, background 150ms ease;
+        }
+        .back-to-top.visible {
+          opacity: 1;
+          pointer-events: auto;
+          transform: translateY(0);
+        }
+        .back-to-top:hover {
+          background: var(--color-accent);
+          color: #fff;
+          border-color: var(--color-accent);
+        }
+        .back-to-top:active {
+          transform: scale(0.93);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .back-to-top {
+            transition: opacity 220ms ease;
+            transform: none !important;
+          }
+        }
+        @media (max-width: 480px) {
+          .back-to-top {
+            bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+            right: 1rem;
+            width: 2.5rem;
+            height: 2.5rem;
+          }
+        }
+      `}</style>
+      <button
+        onClick={scrollToTop}
+        aria-label="Back to top"
+        className={`back-to-top${visible ? ' visible' : ''}`}
       >
-        <polyline points="18 15 12 9 6 15" />
-      </svg>
-    </button>
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <polyline points="18 15 12 9 6 15" />
+        </svg>
+      </button>
+    </>
   );
 }
