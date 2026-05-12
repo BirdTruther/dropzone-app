@@ -13,12 +13,12 @@ type Prefs = {
   notifyInAppMention: boolean;
 };
 
-const EVENTS: { key: keyof Prefs extends `notify${string}${infer E}` ? never : string; label: string; pushKey: keyof Prefs; inAppKey: keyof Prefs }[] = [
-  { label: 'New drop in group',    pushKey: 'notifyPushNewDrop',  inAppKey: 'notifyInAppNewDrop'  },
-  { label: 'Reaction on your post', pushKey: 'notifyPushReaction', inAppKey: 'notifyInAppReaction' },
-  { label: 'Comment on your post', pushKey: 'notifyPushComment',  inAppKey: 'notifyInAppComment'  },
-  { label: 'Mention in a comment', pushKey: 'notifyPushMention',  inAppKey: 'notifyInAppMention'  },
-] as const;
+const EVENTS: { label: string; pushKey: keyof Prefs; inAppKey: keyof Prefs }[] = [
+  { label: 'New drop in group',     pushKey: 'notifyPushNewDrop',   inAppKey: 'notifyInAppNewDrop'   },
+  { label: 'Reaction on your post', pushKey: 'notifyPushReaction',  inAppKey: 'notifyInAppReaction'  },
+  { label: 'Comment on your post',  pushKey: 'notifyPushComment',   inAppKey: 'notifyInAppComment'   },
+  { label: 'Mention in a comment',  pushKey: 'notifyPushMention',   inAppKey: 'notifyInAppMention'   },
+];
 
 export default function NotificationPreferences() {
   const [prefs, setPrefs] = useState<Prefs | null>(null);
