@@ -451,6 +451,7 @@ export default function GroupPage() {
                 {/* Comments */}
                 <CommentThread
                   postId={post.id}
+                  groupId={groupId}
                   currentUserId={userId}
                   postAuthorId={post.author.id}
                   userRole={group.role}
