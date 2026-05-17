@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.89.0 — May 17, 2026
+
+### Facebook Video Embeds
+- Facebook video links now embed directly in the feed via server-side `yt-dlp` download
+- Supports all Facebook video URL formats: `/videos/`, `/reel/`, `/share/r/`, `/share/v/`, `fb.watch` short links
+- **Click-to-load** — videos do not auto-download on page load; a "Load Facebook video" card is shown until the user taps it
+- Download states: idle → loading spinner → native video player (or error fallback with retry)
+- Videos are downloaded once and cached — subsequent views by any user are instant with no re-download
+- ffmpeg re-encodes all output to **H.264 + AAC** for guaranteed browser-native playback (no plugins required)
+- `-movflags +faststart` applied so video begins playing before the full file is served
+- `ffprobe` validates every downloaded file is a real playable video before caching it
+- Partial or corrupt cached files (under 100 KB or failing ffprobe) are automatically deleted and re-attempted
+- Login-walled videos show a clear "This video requires a Facebook login" message instead of a generic error
+- Fallback "View on Facebook ↗" link card shown on any unrecoverable error, with a ↻ Retry button
+- `yt-dlp` and `ffmpeg` installed in the Docker runner stage via `apk`
+
+### Storage & Persistence
+- Uploaded files (manual uploads + Facebook videos) now persist across container restarts and rebuilds
+- Switched from Docker named volume to a **host bind mount** (`./uploads`) so files live at a real path on the host
+- Facebook videos and all user uploads survive `docker compose down` and `updatedropzone` without re-downloading
+- `./uploads/` directory on the host serves as the single source of truth for all stored media
+
+### Build Fixes
+- Added `npx prisma generate` to the Dockerfile builder stage — fixes `PrismaClient` type errors when new models are added to `schema.prisma` without a rebuild
+- `yt-dlp` command switched from shell string join to `execFileAsync` with an args array — fixes argument quoting issues that previously prevented ffmpeg post-processing from running
+
 ## v0.85.0 — May 12, 2026
 - Added notification preferences — per-type Push and In-App toggles in Profile → Notifications
 - Notification types: New drop, Reaction, Comment, Mention — each independently controllable

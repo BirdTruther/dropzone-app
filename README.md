@@ -9,6 +9,7 @@ A private group link-sharing web app. Share links, videos, and images with frien
 - **NextAuth.js** (credentials auth)
 - **open-graph-scraper** (link previews)
 - **web-push** (push notifications via VAPID)
+- **yt-dlp + ffmpeg** (Facebook video downloads)
 - **Docker Compose** (app + database)
 
 ## Features
@@ -23,6 +24,7 @@ A private group link-sharing web app. Share links, videos, and images with frien
 - 📱 PWA — installable on iOS and Android
 - 🔔 Push notifications — get alerted about new drops and reactions even when the app is closed
 - 🌙 Dark mode
+- 📹 Facebook video embeds — Reels and videos download and play natively in the feed
 
 ## Admin Panel
 
@@ -76,19 +78,54 @@ VAPID_MAILTO=mailto:you@example.com
 
 > Push notifications will be silently skipped if these keys are not set — the rest of the app works normally without them.
 
-### 4. Run with Docker
+### 4. Create the uploads directory
+
+Before first launch, create the host directory that stores all uploaded and downloaded media:
+
+```bash
+mkdir -p uploads
+```
+
+This folder is bind-mounted into the container at `/app/public/uploads` and persists across all restarts and rebuilds.
+
+### 5. Run with Docker
 ```bash
 sudo docker compose up -d
 ```
 
 App runs at: `http://localhost:3000`
 
-### 5. Sync Database Schema
+### 6. Sync Database Schema
 ```bash
 sudo docker exec -it dropzone-app npx prisma db push
 ```
 
 > The app uses `prisma db push` for schema sync — no migration files required. Run this once after first deploy and after any schema changes.
+
+## Facebook Video Embeds
+
+Dropzone downloads and serves Facebook videos natively using `yt-dlp` and `ffmpeg`, both installed inside the Docker container automatically.
+
+- Paste any Facebook video URL — `/videos/`, `/reel/`, `/share/r/`, `/share/v/`, or `fb.watch` links all work
+- A **"Load Facebook video"** card is shown — the download only starts when the user taps it
+- Videos are re-encoded to **H.264 + AAC** for guaranteed playback in all browsers
+- Once downloaded, videos are cached in `./uploads/` and served instantly to all subsequent viewers
+- Partial or corrupt downloads are automatically detected and cleaned up
+- Videos that require a Facebook login will show a clear error message
+
+> ⚠️ Only **fully public** Facebook videos can be downloaded. Videos behind a login wall, set to Friends Only, or from private groups will fail with an explanatory message.
+
+## Storage & Uploads
+
+All user-uploaded files and downloaded Facebook videos are stored in the `./uploads/` directory on the host machine.
+
+- **Location:** `./uploads/` (relative to the project root, next to `docker-compose.yml`)
+- **Persists:** across all restarts, rebuilds, and `updatedropzone` runs
+- **Limit:** 20GB total, 100MB per individual file upload
+- **Naming:** Facebook videos are cached as `fb_<url-hash>.mp4`; user uploads use their original filename with a unique prefix
+- **Backup:** back up the `./uploads/` directory to preserve all stored media
+
+> ⚠️ Running `sudo docker compose down -v` will **not** affect uploads since they use a host bind mount — but avoid `down -v` regardless as it removes the PostgreSQL database volume.
 
 ## Comments
 
@@ -111,26 +148,33 @@ Dropzone supports Web Push notifications via the [Web Push Protocol](https://www
 
 ## Folder Structure
 ```
+uploads/                        # Host bind mount — all stored media (survives rebuilds)
 src/
   app/
-    (auth)/login/       # Login + forgot password pages
-    admin/              # Admin panel (users & posts)
-    groups/             # Groups list + group feed
-    profile/            # Profile, password, notifications settings
+    (auth)/login/               # Login + forgot password pages
+    admin/                      # Admin panel (users & posts)
+    groups/                     # Groups list + group feed
+    profile/                    # Profile, password, notifications settings
     api/
       posts/[id]/
-        comments/       # GET + POST comments on a post
-        comments/[commentId]/  # DELETE a comment
-      push/subscribe/   # Save / remove push subscriptions
-    share/[token]/      # Public share preview page
-    forgot-password/    # Lockout help page
+        comments/               # GET + POST comments on a post
+        comments/[commentId]/   # DELETE a comment
+      push/subscribe/           # Save / remove push subscriptions
+      fetch-facebook/           # yt-dlp download + ffprobe validation endpoint
+      uploads/[filename]/       # Serve uploaded files
+      storage/                  # GET storage usage stats
+    share/[token]/              # Public share preview page
+    forgot-password/            # Lockout help page
   components/
     CommentThread.tsx           # Collapsible comment thread component
+    PostEmbed.tsx               # Embed router (YouTube/TikTok/Spotify/Facebook/Twitter/Twitch)
     PushNotificationToggle.tsx  # Enable/disable push per device
   lib/
+    embed.ts            # URL → embed type detection
     timeAgo.ts          # Relative timestamp utility (timeAgo, isoDate, fullDate)
     notifications.ts    # createNotification() — saves to DB + fires push
     sendPush.ts         # web-push wrapper, auto-cleans expired subs
+    storage.ts          # Upload size tracking and limits
 prisma/
   schema.prisma         # Database schema
 docker-compose.yml
