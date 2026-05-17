@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, statSync, unlinkSync } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
@@ -11,6 +11,9 @@ const execAsync = promisify(exec);
 
 // Max allowed file size: 200 MB
 const MAX_BYTES = 200 * 1024 * 1024;
+
+// Minimum valid file size: anything under 100 KB is a partial/corrupt download
+const MIN_VALID_BYTES = 100 * 1024;
 
 export async function POST(req: NextRequest) {
   // Must be authenticated
@@ -43,9 +46,16 @@ export async function POST(req: NextRequest) {
   const outPath = path.join(uploadsDir, `fb_${hash}.mp4`);
   const publicPath = `/uploads/fb_${hash}.mp4`;
 
-  // Return cached file if already downloaded
+  // FIX 2: Delete any existing file that is too small (partial / corrupt download)
   if (existsSync(outPath)) {
-    return NextResponse.json({ url: publicPath });
+    const { size } = statSync(outPath);
+    if (size < MIN_VALID_BYTES) {
+      console.warn(`[fetch-facebook] Removing corrupt/partial file (${size} bytes): ${outPath}`);
+      unlinkSync(outPath);
+    } else {
+      // Healthy cached file — return immediately
+      return NextResponse.json({ url: publicPath });
+    }
   }
 
   try {
@@ -63,8 +73,22 @@ export async function POST(req: NextRequest) {
     ].join(' ');
 
     await execAsync(cmd, { timeout: 120_000 }); // 2 min timeout
+
+    // Verify the output file is a healthy size before returning
+    if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES) {
+      if (existsSync(outPath)) unlinkSync(outPath); // clean up
+      return NextResponse.json(
+        { error: 'Download produced an empty or corrupt file.' },
+        { status: 422 }
+      );
+    }
+
     return NextResponse.json({ url: publicPath });
   } catch (err: any) {
+    // Clean up any partial file left by a failed/killed yt-dlp process
+    if (existsSync(outPath)) {
+      try { unlinkSync(outPath); } catch { /* ignore */ }
+    }
     console.error('[fetch-facebook] yt-dlp error:', err?.stderr ?? err?.message ?? err);
     return NextResponse.json(
       { error: 'Could not download video. It may be private or unavailable.' },
