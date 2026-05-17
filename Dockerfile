@@ -1,39 +1,30 @@
-FROM node:20-alpine AS base
-
-# Install dependencies
-FROM base AS deps
-RUN apk add --no-cache libc6-compat
+FROM node:20-alpine AS deps
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json* ./
+RUN npm ci
 
-# Build the app
-FROM base AS builder
+FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npx prisma generate
 RUN npm run build
 
-# Production runner
-FROM base AS runner
+FROM node:20-alpine AS runner
 WORKDIR /app
-ENV NODE_ENV production
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-RUN mkdir -p ./public/uploads && chown -R nextjs:nodejs ./public
+
+# Install Python + pip + yt-dlp + ffmpeg for Facebook video downloads
+RUN apk add --no-cache python3 py3-pip ffmpeg \
+  && pip3 install --break-system-packages --no-cache-dir yt-dlp
+
+ENV NODE_ENV=production
+
 COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
-# Copy prisma schema, config, and full node_modules for db push support
-COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./prisma.config.ts
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+RUN mkdir -p public/uploads
 
-USER nextjs
 EXPOSE 3000
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
+ENV PORT=3000
 
 CMD ["node", "server.js"]

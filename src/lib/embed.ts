@@ -1,8 +1,9 @@
-export type EmbedType = 'youtube' | 'tiktok' | 'spotify' | 'twitter' | 'twitch' | 'facebook' | 'none';
+export type EmbedType = 'youtube' | 'tiktok' | 'spotify' | 'twitter' | 'twitch' | 'facebook-video' | 'none';
 
 export interface EmbedInfo {
   type: EmbedType;
   embedUrl?: string;
+  originalUrl?: string;
 }
 
 export function getEmbed(url: string): EmbedInfo {
@@ -57,7 +58,7 @@ export function getEmbed(url: string): EmbedInfo {
 
     // Twitch
     if (host === 'twitch.tv' || host === 'clips.twitch.tv') {
-      const clipMatch = u.pathname.match(/\/clip\/([\w-]+)/) ||
+      const clipMatch = u.pathname.match(/\/clip\/(\w[\w-]+)/) ||
         (host === 'clips.twitch.tv' ? [null, u.pathname.slice(1)] : null);
       if (clipMatch) {
         return {
@@ -65,7 +66,7 @@ export function getEmbed(url: string): EmbedInfo {
           embedUrl: `https://clips.twitch.tv/embed?clip=${clipMatch[1]}&parent=${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}&autoplay=false`,
         };
       }
-      const channelMatch = u.pathname.match(/^\/([\w]+)$/);
+      const channelMatch = u.pathname.match(/^\/(\w+)$/);
       if (channelMatch) {
         return {
           type: 'twitch',
@@ -74,21 +75,16 @@ export function getEmbed(url: string): EmbedInfo {
       }
     }
 
-    // Facebook videos
+    // Facebook — signal for server-side yt-dlp download, no iframe
     if (host === 'facebook.com' || host === 'fb.watch' || host === 'm.facebook.com') {
       const isVideo =
         u.searchParams.has('v') ||
         u.pathname.includes('/videos/') ||
         u.pathname.includes('/video/') ||
+        u.pathname.includes('/reel/') ||
         host === 'fb.watch';
       if (isVideo) {
-        const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ?? '';
-        const encodedUrl = encodeURIComponent(url);
-        const appIdParam = appId ? `&appId=${appId}` : '';
-        return {
-          type: 'facebook',
-          embedUrl: `https://www.facebook.com/plugins/video.php?href=${encodedUrl}&show_text=false&width=560&autoplay=false${appIdParam}`,
-        };
+        return { type: 'facebook-video', originalUrl: url };
       }
     }
 
