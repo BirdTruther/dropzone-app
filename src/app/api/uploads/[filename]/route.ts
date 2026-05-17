@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { readFile } from 'fs/promises';
+import { NextRequest } from 'next/server';
+import { createReadStream, statSync, existsSync } from 'fs';
 import { join, extname } from 'path';
+import { Readable } from 'stream';
 
 const MIME: Record<string, string> = {
   '.jpg': 'image/jpeg',
@@ -18,22 +19,59 @@ export async function GET(
   { params }: { params: { filename: string } }
 ) {
   const filename = params.filename.replace(/[^a-zA-Z0-9._-]/g, '');
-  if (!filename) return new NextResponse('Not found', { status: 404 });
+  if (!filename) return new Response('Not found', { status: 404 });
 
   const filePath = join(process.cwd(), 'public', 'uploads', filename);
+  if (!existsSync(filePath)) return new Response('Not found', { status: 404 });
 
-  try {
-    const file = await readFile(filePath);
-    const ext = extname(filename).toLowerCase();
-    const mimeType = MIME[ext] ?? 'application/octet-stream';
-    return new NextResponse(file, {
+  const ext = extname(filename).toLowerCase();
+  const mimeType = MIME[ext] ?? 'application/octet-stream';
+  const { size } = statSync(filePath);
+
+  const rangeHeader = req.headers.get('range');
+
+  if (rangeHeader) {
+    // Parse "bytes=start-end"
+    const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+    if (!match) return new Response('Invalid range', { status: 416 });
+
+    const start = parseInt(match[1], 10);
+    const end = match[2] ? parseInt(match[2], 10) : Math.min(start + 1024 * 1024 - 1, size - 1);
+
+    if (start >= size || end >= size) {
+      return new Response('Range Not Satisfiable', {
+        status: 416,
+        headers: { 'Content-Range': `bytes */${size}` },
+      });
+    }
+
+    const chunkSize = end - start + 1;
+    const stream = createReadStream(filePath, { start, end });
+    const webStream = Readable.toWeb(stream) as ReadableStream;
+
+    return new Response(webStream, {
+      status: 206,
       headers: {
         'Content-Type': mimeType,
+        'Content-Range': `bytes ${start}-${end}/${size}`,
+        'Content-Length': String(chunkSize),
+        'Accept-Ranges': 'bytes',
         'Cache-Control': 'public, max-age=86400',
-        'Content-Length': file.length.toString(),
       },
     });
-  } catch {
-    return new NextResponse('Not found', { status: 404 });
   }
+
+  // Full file (no Range header)
+  const stream = createReadStream(filePath);
+  const webStream = Readable.toWeb(stream) as ReadableStream;
+
+  return new Response(webStream, {
+    status: 200,
+    headers: {
+      'Content-Type': mimeType,
+      'Content-Length': String(size),
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=86400',
+    },
+  });
 }
