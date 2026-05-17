@@ -16,7 +16,6 @@ const MAX_BYTES = 200 * 1024 * 1024;
 const MIN_VALID_BYTES = 100 * 1024;
 
 export async function POST(req: NextRequest) {
-  // Must be authenticated
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -26,57 +25,58 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     fbUrl = body.url;
-    new URL(fbUrl); // validate
+    new URL(fbUrl);
   } catch {
     return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
   }
 
-  // Only allow Facebook/fb.watch URLs
   const host = new URL(fbUrl).hostname.replace('www.', '');
   if (!['facebook.com', 'm.facebook.com', 'fb.watch'].includes(host)) {
     return NextResponse.json({ error: 'Not a Facebook URL' }, { status: 400 });
   }
 
-  // Ensure uploads directory exists
   const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
   if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
 
-  // Unique filename based on URL hash
   const hash = crypto.createHash('sha256').update(fbUrl).digest('hex').slice(0, 16);
   const outPath = path.join(uploadsDir, `fb_${hash}.mp4`);
   const publicPath = `/uploads/fb_${hash}.mp4`;
 
-  // FIX 2: Delete any existing file that is too small (partial / corrupt download)
+  // Delete any existing partial/corrupt file before checking cache
   if (existsSync(outPath)) {
     const { size } = statSync(outPath);
     if (size < MIN_VALID_BYTES) {
       console.warn(`[fetch-facebook] Removing corrupt/partial file (${size} bytes): ${outPath}`);
       unlinkSync(outPath);
     } else {
-      // Healthy cached file — return immediately
       return NextResponse.json({ url: publicPath });
     }
   }
 
   try {
-    // yt-dlp: best mp4 quality, hard cap at 200MB, output to specific file
+    // Format priority:
+    // 1. Best H.264 video + AAC audio (natively supported by all browsers)
+    // 2. Any mp4 with H.264
+    // 3. Any available format — then ffmpeg re-encodes to H.264/AAC via --recode-video
+    // --postprocessor-args forces ffmpeg to re-encode non-H.264 streams
     const cmd = [
       'yt-dlp',
       '--no-playlist',
       '--max-filesize', String(MAX_BYTES),
-      '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+      '-f', '"bestvideo[vcodec^=avc][ext=mp4]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=avc]+bestaudio/best[vcodec^=avc]/best"',
       '--merge-output-format', 'mp4',
+      '--recode-video', 'mp4',
+      '--postprocessor-args', '"ffmpeg:-vcodec libx264 -acodec aac -movflags +faststart"',
       '--no-warnings',
-      '-o', outPath,
-      '--', // prevent URL from being interpreted as a flag
-      JSON.stringify(fbUrl),
+      '-o', `"${outPath}"`,
+      '--',
+      `"${fbUrl}"`,
     ].join(' ');
 
-    await execAsync(cmd, { timeout: 120_000 }); // 2 min timeout
+    await execAsync(cmd, { timeout: 180_000 }); // 3 min timeout (re-encoding takes longer)
 
-    // Verify the output file is a healthy size before returning
     if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES) {
-      if (existsSync(outPath)) unlinkSync(outPath); // clean up
+      if (existsSync(outPath)) unlinkSync(outPath);
       return NextResponse.json(
         { error: 'Download produced an empty or corrupt file.' },
         { status: 422 }
@@ -85,7 +85,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ url: publicPath });
   } catch (err: any) {
-    // Clean up any partial file left by a failed/killed yt-dlp process
     if (existsSync(outPath)) {
       try { unlinkSync(outPath); } catch { /* ignore */ }
     }
