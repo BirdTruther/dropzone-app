@@ -1,19 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { existsSync, mkdirSync, statSync, unlinkSync } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
-// Max allowed file size: 200 MB
-const MAX_BYTES = 200 * 1024 * 1024;
+const MAX_BYTES = 200 * 1024 * 1024; // 200 MB
+const MIN_VALID_BYTES = 100 * 1024;  // 100 KB
 
-// Minimum valid file size: anything under 100 KB is a partial/corrupt download
-const MIN_VALID_BYTES = 100 * 1024;
+/** Use ffprobe to confirm the file is a real, playable video. */
+async function isValidVideo(filePath: string): Promise<boolean> {
+  try {
+    await execFileAsync('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=codec_name',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      filePath,
+    ], { timeout: 15_000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -42,11 +55,12 @@ export async function POST(req: NextRequest) {
   const outPath = path.join(uploadsDir, `fb_${hash}.mp4`);
   const publicPath = `/uploads/fb_${hash}.mp4`;
 
-  // Delete any existing partial/corrupt file before checking cache
+  // Delete partial/corrupt cached file
   if (existsSync(outPath)) {
     const { size } = statSync(outPath);
-    if (size < MIN_VALID_BYTES) {
-      console.warn(`[fetch-facebook] Removing corrupt/partial file (${size} bytes): ${outPath}`);
+    const valid = size >= MIN_VALID_BYTES && await isValidVideo(outPath);
+    if (!valid) {
+      console.warn(`[fetch-facebook] Removing invalid cached file (${size} bytes): ${outPath}`);
       unlinkSync(outPath);
     } else {
       return NextResponse.json({ url: publicPath });
@@ -54,31 +68,27 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Format priority:
-    // 1. Best H.264 video + AAC audio (natively supported by all browsers)
-    // 2. Any mp4 with H.264
-    // 3. Any available format — then ffmpeg re-encodes to H.264/AAC via --recode-video
-    // --postprocessor-args forces ffmpeg to re-encode non-H.264 streams
-    const cmd = [
-      'yt-dlp',
+    // Use execFileAsync (no shell) so args are passed safely without quoting issues.
+    // Format priority: H.264+AAC mp4 → any H.264 → best available then re-encode.
+    // ffmpeg postprocessor re-encodes to H.264/AAC for guaranteed browser playback.
+    await execFileAsync('yt-dlp', [
       '--no-playlist',
       '--max-filesize', String(MAX_BYTES),
-      '-f', '"bestvideo[vcodec^=avc][ext=mp4]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=avc]+bestaudio/best[vcodec^=avc]/best"',
+      '-f', 'bestvideo[vcodec^=avc][ext=mp4]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=avc]+bestaudio/best',
       '--merge-output-format', 'mp4',
       '--recode-video', 'mp4',
-      '--postprocessor-args', '"ffmpeg:-vcodec libx264 -acodec aac -movflags +faststart"',
+      '--postprocessor-args', 'ffmpeg:-vcodec libx264 -acodec aac -movflags +faststart',
       '--no-warnings',
-      '-o', `"${outPath}"`,
+      '-o', outPath,
       '--',
-      `"${fbUrl}"`,
-    ].join(' ');
+      fbUrl,
+    ], { timeout: 180_000 });
 
-    await execAsync(cmd, { timeout: 180_000 }); // 3 min timeout (re-encoding takes longer)
-
-    if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES) {
+    // Validate the output is a real playable video
+    if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES || !await isValidVideo(outPath)) {
       if (existsSync(outPath)) unlinkSync(outPath);
       return NextResponse.json(
-        { error: 'Download produced an empty or corrupt file.' },
+        { error: 'Download completed but the file is not a playable video. The link may require a Facebook login.' },
         { status: 422 }
       );
     }
@@ -88,10 +98,22 @@ export async function POST(req: NextRequest) {
     if (existsSync(outPath)) {
       try { unlinkSync(outPath); } catch { /* ignore */ }
     }
-    console.error('[fetch-facebook] yt-dlp error:', err?.stderr ?? err?.message ?? err);
-    return NextResponse.json(
-      { error: 'Could not download video. It may be private or unavailable.' },
-      { status: 422 }
-    );
+
+    const stderr: string = err?.stderr ?? err?.message ?? '';
+    console.error('[fetch-facebook] yt-dlp error:', stderr);
+
+    // Detect login-walled content
+    const needsLogin =
+      stderr.includes('login') ||
+      stderr.includes('cookies') ||
+      stderr.includes('private') ||
+      stderr.includes('unavailable') ||
+      stderr.includes('This content');
+
+    const message = needsLogin
+      ? 'This video requires a Facebook login to access. Only fully public videos can be downloaded.'
+      : 'Could not download video. It may have been deleted or is unavailable.';
+
+    return NextResponse.json({ error: message }, { status: 422 });
   }
 }
