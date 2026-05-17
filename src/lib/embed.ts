@@ -75,13 +75,16 @@ export function getEmbed(url: string): EmbedInfo {
       }
     }
 
-    // Facebook — signal for server-side yt-dlp download, no iframe
+    // Facebook — signal for server-side yt-dlp download, no iframe.
+    // Covers: /videos/, /video/, /reel/, /share/r/, /share/v/, any /share/ path,
+    // fb.watch short links, and legacy ?v= video params.
     if (host === 'facebook.com' || host === 'fb.watch' || host === 'm.facebook.com') {
       const isVideo =
         u.searchParams.has('v') ||
         u.pathname.includes('/videos/') ||
         u.pathname.includes('/video/') ||
         u.pathname.includes('/reel/') ||
+        u.pathname.startsWith('/share/') ||
         host === 'fb.watch';
       if (isVideo) {
         return { type: 'facebook-video', originalUrl: url };
