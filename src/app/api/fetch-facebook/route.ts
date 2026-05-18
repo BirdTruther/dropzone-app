@@ -90,17 +90,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Step 2: Always re-encode to H.264 + AAC for guaranteed browser playback
+    // Step 2: Re-encode to H.264 (8-bit yuv420p) + AAC for guaranteed browser playback.
+    // -pix_fmt yuv420p: forces 8-bit color depth — required because newer Facebook
+    //   videos are often 10-bit (yuv420p10le) which Chrome cannot play in H.264.
+    // -movflags +faststart: moves the moov atom to the front for progressive playback.
+    // NOTE: -f mp4 is intentionally omitted — the output extension already implies
+    //   the container, and combining -f mp4 with +faststart can corrupt the moov atom.
     await execFileAsync('ffmpeg', [
       '-y',
       '-i', tmpPath,
       '-vcodec', 'libx264',
       '-preset', 'fast',
       '-crf', '23',
+      '-pix_fmt', 'yuv420p',
       '-acodec', 'aac',
       '-b:a', '128k',
       '-movflags', '+faststart',
-      '-f', 'mp4',
       outPath,
     ], { timeout: 300_000 });
 
