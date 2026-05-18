@@ -6,11 +6,48 @@ interface Props {
   url: string;
 }
 
+/** Returns true once the element is within 200px of the viewport. */
+function useInView(ref: React.RefObject<HTMLElement | null>): boolean {
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (inView) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setInView(true); obs.disconnect(); } },
+      { rootMargin: '200px' }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [ref, inView]);
+  return inView;
+}
+
+function Skeleton({ height = 200 }: { height?: number }) {
+  return (
+    <div style={{
+      height,
+      borderRadius: 8,
+      background: 'var(--color-surface-2)',
+      marginBottom: '0.5rem',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: '0.8rem',
+      color: 'var(--color-text-muted)',
+    }} />
+  );
+}
+
 function TikTokEmbed({ url }: { url: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(containerRef);
   const [videoId, setVideoId] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
+  // Only fetch oembed once the post is near the viewport
   useEffect(() => {
+    if (!inView) return;
     fetch(`/api/tiktok-oembed?url=${encodeURIComponent(url)}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => {
@@ -18,7 +55,7 @@ function TikTokEmbed({ url }: { url: string }) {
         else setFailed(true);
       })
       .catch(() => setFailed(true));
-  }, [url]);
+  }, [inView, url]);
 
   if (failed) {
     return (
@@ -30,33 +67,42 @@ function TikTokEmbed({ url }: { url: string }) {
     );
   }
 
-  if (!videoId) {
-    return (
-      <div style={{ height: 560, borderRadius: 8, background: 'var(--color-surface-2)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-        Loading TikTok...
-      </div>
-    );
-  }
-
+  // Always render the container div so the IntersectionObserver has a target
   return (
-    <div style={{
-      position: 'relative',
-      width: '100%',
-      maxWidth: 340,
-      margin: '0 auto 0.5rem',
-      borderRadius: 12,
-      overflow: 'hidden',
-      background: '#000',
-      aspectRatio: '9/16',
-    }}>
-      <iframe
-        src={`https://www.tiktok.com/embed/v2/${videoId}?autoplay=0`}
-        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
-        allowFullScreen
-        allow="autoplay; encrypted-media"
-        title="TikTok video"
-        loading="lazy"
-      />
+    <div ref={containerRef} style={{ marginBottom: '0.5rem' }}>
+      {(!inView || !videoId) ? (
+        <div style={{
+          height: 560,
+          borderRadius: 8,
+          background: 'var(--color-surface-2)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '0.8rem',
+          color: 'var(--color-text-muted)',
+        }}>
+          {inView && !videoId ? 'Loading TikTok…' : ''}
+        </div>
+      ) : (
+        <div style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: 340,
+          margin: '0 auto',
+          borderRadius: 12,
+          overflow: 'hidden',
+          background: '#000',
+          aspectRatio: '9/16',
+        }}>
+          <iframe
+            src={`https://www.tiktok.com/embed/v2/${videoId}?autoplay=0`}
+            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
+            allowFullScreen
+            allow="autoplay; encrypted-media"
+            title="TikTok video"
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -83,7 +129,6 @@ function FacebookVideoEmbed({ url }: { url: string }) {
       .catch((err: any) => { setErrorMsg(typeof err === 'string' ? err : 'Could not load video.'); setState('error'); });
   }
 
-  // Idle — click to load card
   if (state === 'idle') {
     return (
       <button
@@ -117,7 +162,6 @@ function FacebookVideoEmbed({ url }: { url: string }) {
     );
   }
 
-  // Loading
   if (state === 'loading') {
     return (
       <div style={{
@@ -142,7 +186,6 @@ function FacebookVideoEmbed({ url }: { url: string }) {
     );
   }
 
-  // Error — show fallback link + retry
   if (state === 'error' || !videoUrl) {
     return (
       <div style={{ marginBottom: '0.5rem' }}>
@@ -169,7 +212,6 @@ function FacebookVideoEmbed({ url }: { url: string }) {
     );
   }
 
-  // Ready
   return (
     <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: '0.5rem', background: '#000' }}>
       <video
@@ -184,24 +226,74 @@ function FacebookVideoEmbed({ url }: { url: string }) {
   );
 }
 
+function LazyIframe({
+  src,
+  title,
+  height,
+  aspectRatio = '16/9',
+  allow,
+  style,
+}: {
+  src: string;
+  title: string;
+  height?: number;
+  aspectRatio?: string;
+  allow?: string;
+  style?: React.CSSProperties;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(containerRef);
+
+  const wrapperStyle: React.CSSProperties = height
+    ? { height, borderRadius: 8, overflow: 'hidden', marginBottom: '0.5rem' }
+    : { position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: 8, marginBottom: '0.5rem' };
+
+  const iframeStyle: React.CSSProperties = height
+    ? { width: '100%', height: '100%', border: 'none', borderRadius: 12, ...style }
+    : { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none', ...style };
+
+  return (
+    <div ref={containerRef} style={wrapperStyle}>
+      {inView ? (
+        <iframe
+          src={src}
+          style={iframeStyle}
+          allowFullScreen
+          allow={allow ?? 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'}
+          title={title}
+        />
+      ) : (
+        <div style={{
+          position: height ? undefined : 'absolute',
+          inset: height ? undefined : 0,
+          width: '100%',
+          height: height ? '100%' : undefined,
+          background: 'var(--color-surface-2)',
+          borderRadius: 8,
+        }} />
+      )}
+    </div>
+  );
+}
+
 export default function PostEmbed({ url }: Props) {
   const embed = getEmbed(url);
   const twitterRef = useRef<HTMLDivElement>(null);
+  const twitterInView = useInView(twitterRef);
 
   useEffect(() => {
-    if (embed.type === 'twitter' && twitterRef.current) {
-      if (!(window as any).twttr) {
-        const script = document.createElement('script');
-        script.src = 'https://platform.twitter.com/widgets.js';
-        script.async = true;
-        script.charset = 'utf-8';
-        document.body.appendChild(script);
-        script.onload = () => (window as any).twttr?.widgets?.load(twitterRef.current!);
-      } else {
-        (window as any).twttr?.widgets?.load(twitterRef.current);
-      }
+    if (embed.type !== 'twitter' || !twitterInView) return;
+    if (!(window as any).twttr) {
+      const script = document.createElement('script');
+      script.src = 'https://platform.twitter.com/widgets.js';
+      script.async = true;
+      script.charset = 'utf-8';
+      document.body.appendChild(script);
+      script.onload = () => (window as any).twttr?.widgets?.load(twitterRef.current!);
+    } else {
+      (window as any).twttr?.widgets?.load(twitterRef.current);
     }
-  }, [embed.type, url]);
+  }, [embed.type, twitterInView, url]);
 
   if (embed.type === 'none') return null;
   if (embed.type === 'tiktok') return <TikTokEmbed url={url} />;
@@ -210,9 +302,11 @@ export default function PostEmbed({ url }: Props) {
   if (embed.type === 'twitter') {
     return (
       <div ref={twitterRef} style={{ marginBottom: '0.5rem' }}>
-        <blockquote className="twitter-tweet" data-dnt="true">
-          <a href={url}>View Tweet</a>
-        </blockquote>
+        {twitterInView && (
+          <blockquote className="twitter-tweet" data-dnt="true">
+            <a href={url}>View Tweet</a>
+          </blockquote>
+        )}
       </div>
     );
   }
@@ -221,28 +315,20 @@ export default function PostEmbed({ url }: Props) {
     const isTrack = embed.embedUrl?.includes('/track/');
     const height = isTrack ? 80 : 380;
     return (
-      <iframe
-        src={embed.embedUrl}
-        width="100%"
-        height={height}
-        style={{ border: 'none', borderRadius: 12, marginBottom: '0.5rem' }}
-        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-        loading="lazy"
+      <LazyIframe
+        src={embed.embedUrl!}
         title="Spotify player"
+        height={height}
+        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
       />
     );
   }
 
+  // YouTube, Twitch, and all other iframes
   return (
-    <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: 8, marginBottom: '0.5rem' }}>
-      <iframe
-        src={embed.embedUrl}
-        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
-        allowFullScreen
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        loading="lazy"
-        title="Embedded content"
-      />
-    </div>
+    <LazyIframe
+      src={embed.embedUrl!}
+      title="Embedded content"
+    />
   );
 }
