@@ -12,7 +12,6 @@ const execFileAsync = promisify(execFile);
 const MAX_BYTES = 200 * 1024 * 1024; // 200 MB
 const MIN_VALID_BYTES = 100 * 1024;  // 100 KB
 
-/** Use ffprobe to confirm the file is a real, playable video. */
 async function isValidVideo(filePath: string): Promise<boolean> {
   try {
     await execFileAsync('ffprobe', [
@@ -53,56 +52,80 @@ export async function POST(req: NextRequest) {
 
   const hash = crypto.createHash('sha256').update(fbUrl).digest('hex').slice(0, 16);
   const outPath = path.join(uploadsDir, `fb_${hash}.mp4`);
+  const tmpPath = path.join(uploadsDir, `fb_${hash}.tmp.mp4`);
   const publicPath = `/uploads/fb_${hash}.mp4`;
 
-  // Delete partial/corrupt cached file
+  // Return cached file if it already exists and is valid
   if (existsSync(outPath)) {
     const { size } = statSync(outPath);
     const valid = size >= MIN_VALID_BYTES && await isValidVideo(outPath);
-    if (!valid) {
-      console.warn(`[fetch-facebook] Removing invalid cached file (${size} bytes): ${outPath}`);
-      unlinkSync(outPath);
-    } else {
-      return NextResponse.json({ url: publicPath });
-    }
+    if (valid) return NextResponse.json({ url: publicPath });
+    console.warn(`[fetch-facebook] Removing invalid cached file (${size} bytes): ${outPath}`);
+    unlinkSync(outPath);
+  }
+
+  // Clean up any leftover temp file from a previous failed attempt
+  if (existsSync(tmpPath)) {
+    try { unlinkSync(tmpPath); } catch { /* ignore */ }
   }
 
   try {
-    // Use execFileAsync (no shell) so args are passed safely without quoting issues.
-    // Format priority: H.264+AAC mp4 → any H.264 → best available then re-encode.
-    // ffmpeg postprocessor re-encodes to H.264/AAC for guaranteed browser playback.
+    // Step 1: Download raw video to temp file (best quality, no re-encode yet)
     await execFileAsync('yt-dlp', [
       '--no-playlist',
       '--max-filesize', String(MAX_BYTES),
-      '-f', 'bestvideo[vcodec^=avc][ext=mp4]+bestaudio[acodec^=mp4a]/bestvideo[vcodec^=avc]+bestaudio/best',
+      '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best',
       '--merge-output-format', 'mp4',
-      '--recode-video', 'mp4',
-      '--postprocessor-args', 'ffmpeg:-vcodec libx264 -acodec aac -movflags +faststart',
       '--no-warnings',
-      '-o', outPath,
+      '-o', tmpPath,
       '--',
       fbUrl,
     ], { timeout: 180_000 });
 
-    // Validate the output is a real playable video
-    if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES || !await isValidVideo(outPath)) {
-      if (existsSync(outPath)) unlinkSync(outPath);
+    if (!existsSync(tmpPath) || statSync(tmpPath).size < MIN_VALID_BYTES) {
+      if (existsSync(tmpPath)) unlinkSync(tmpPath);
       return NextResponse.json(
         { error: 'Download completed but the file is not a playable video. The link may require a Facebook login.' },
         { status: 422 }
       );
     }
 
+    // Step 2: Always re-encode to H.264 + AAC for guaranteed browser playback
+    await execFileAsync('ffmpeg', [
+      '-y',
+      '-i', tmpPath,
+      '-vcodec', 'libx264',
+      '-preset', 'fast',
+      '-crf', '23',
+      '-acodec', 'aac',
+      '-b:a', '128k',
+      '-movflags', '+faststart',
+      '-f', 'mp4',
+      outPath,
+    ], { timeout: 300_000 });
+
+    // Remove the raw temp file
+    try { unlinkSync(tmpPath); } catch { /* ignore */ }
+
+    // Validate the final output
+    if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES || !await isValidVideo(outPath)) {
+      if (existsSync(outPath)) unlinkSync(outPath);
+      return NextResponse.json(
+        { error: 'Video processing failed. Please try again.' },
+        { status: 422 }
+      );
+    }
+
     return NextResponse.json({ url: publicPath });
+
   } catch (err: any) {
-    if (existsSync(outPath)) {
-      try { unlinkSync(outPath); } catch { /* ignore */ }
+    for (const f of [tmpPath, outPath]) {
+      if (existsSync(f)) try { unlinkSync(f); } catch { /* ignore */ }
     }
 
     const stderr: string = err?.stderr ?? err?.message ?? '';
-    console.error('[fetch-facebook] yt-dlp error:', stderr);
+    console.error('[fetch-facebook] error:', stderr);
 
-    // Detect login-walled content
     const needsLogin =
       stderr.includes('login') ||
       stderr.includes('cookies') ||
