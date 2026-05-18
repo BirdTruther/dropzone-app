@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   const hash = crypto.createHash('sha256').update(fbUrl).digest('hex').slice(0, 16);
   const outPath = path.join(uploadsDir, `fb_${hash}.mp4`);
   const tmpPath = path.join(uploadsDir, `fb_${hash}.tmp.mp4`);
-  const publicPath = `/uploads/fb_${hash}.mp4`;
+  const publicPath = `/api/uploads/fb_${hash}.mp4`;
 
   // Return cached file if it already exists and is valid
   if (existsSync(outPath)) {
