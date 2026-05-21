@@ -53,9 +53,12 @@ export default function GroupPage() {
   const router = useRouter();
   const params = useParams();
   const groupId = params.id as string;
-  const userId = (session?.user as any)?.id;
-  const userName = session?.user?.name ?? 'You';
-  const userAvatar = session?.user?.image ?? undefined;
+  // Cast to any — NextAuth's default Session type doesn't include id or image;
+  // those are added via the session callback in authOptions.
+  const sessionUser = (session?.user as any);
+  const userId = sessionUser?.id;
+  const userName: string = sessionUser?.name ?? 'You';
+  const userAvatar: string | undefined = sessionUser?.image ?? undefined;
 
   const [group, setGroup] = useState<GroupData | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
