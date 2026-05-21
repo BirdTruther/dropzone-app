@@ -10,6 +10,13 @@ interface StorageData {
   files: { name: string; sizeBytes: number; createdAt: string }[];
 }
 
+interface GroupStat {
+  id: string;
+  name: string;
+  emoji: string;
+  _count: { posts: number; members: number };
+}
+
 interface StatsData {
   users: number;
   groups: number;
@@ -17,6 +24,7 @@ interface StatsData {
   comments: number;
   reactions: number;
   pushSubscriptions: number;
+  groupStats: GroupStat[];
 }
 
 function fmt(bytes: number) {
@@ -82,6 +90,7 @@ export default function AdminPage() {
   if (status === 'loading') return <div style={{ padding: '2rem', color: 'var(--color-text-muted)' }}>Loading...</div>;
 
   const usedPct = storage ? Math.min(100, (storage.totalBytes / (1024 * 1024 * 1024)) * 100) : 0;
+  const totalPosts = stats?.posts ?? 0;
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '1.5rem 1rem' }}>
@@ -108,6 +117,44 @@ export default function AdminPage() {
             <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</div>
           </div>
         ))}
+      </div>
+
+      {/* Per-group post breakdown */}
+      <div className="card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+        <h2 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '1rem' }}>📊 Posts by Group</h2>
+        {loadingStats ? (
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>Loading…</p>
+        ) : !stats?.groupStats?.length ? (
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>No groups yet.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            {stats.groupStats.map(g => {
+              const pct = totalPosts > 0 ? (g._count.posts / totalPosts) * 100 : 0;
+              return (
+                <div key={g.id}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.25rem' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                      {g.emoji} {g.name}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                      {g._count.posts} post{g._count.posts !== 1 ? 's' : ''} · {g._count.members} member{g._count.members !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div style={{ height: 6, borderRadius: 99, background: 'var(--color-surface-offset)', overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%',
+                      borderRadius: 99,
+                      width: `${pct}%`,
+                      background: 'var(--color-accent, #5b6af7)',
+                      transition: 'width 0.6s ease',
+                      minWidth: g._count.posts > 0 ? 4 : 0,
+                    }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Storage section */}
