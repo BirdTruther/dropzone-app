@@ -54,6 +54,8 @@ export default function GroupPage() {
   const params = useParams();
   const groupId = params.id as string;
   const userId = (session?.user as any)?.id;
+  const userName = session?.user?.name ?? 'You';
+  const userAvatar = session?.user?.image ?? undefined;
 
   const [group, setGroup] = useState<GroupData | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -453,6 +455,8 @@ export default function GroupPage() {
                   postId={post.id}
                   groupId={groupId}
                   currentUserId={userId}
+                  currentUserName={userName}
+                  currentUserAvatar={userAvatar}
                   postAuthorId={post.author.id}
                   userRole={group.role}
                   initialCount={post._count?.comments ?? 0}
