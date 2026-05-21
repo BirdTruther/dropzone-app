@@ -6,7 +6,7 @@ export interface EmbedInfo {
   originalUrl?: string;
 }
 
-export function getEmbed(url: string): EmbedInfo {
+export function getEmbed(url: string, hostname?: string): EmbedInfo {
   try {
     const u = new URL(url);
     const host = u.hostname.replace('www.', '');
@@ -57,20 +57,30 @@ export function getEmbed(url: string): EmbedInfo {
     }
 
     // Twitch
+    // hostname param > window.location.hostname > env var > 'localhost'
+    // Passing 'localhost' causes Twitch to block the embed with CSP errors,
+    // so always supply the real public hostname via the optional param or env var.
     if (host === 'twitch.tv' || host === 'clips.twitch.tv') {
-      const clipMatch = u.pathname.match(/\/clip\/(\w[\w-]+)/) ||
+      const parent =
+        hostname ??
+        (typeof window !== 'undefined' ? window.location.hostname : null) ??
+        process.env.NEXT_PUBLIC_SITE_HOSTNAME ??
+        'localhost';
+
+      const clipMatch =
+        u.pathname.match(/\/clip\/(\w[\w-]+)/) ||
         (host === 'clips.twitch.tv' ? [null, u.pathname.slice(1)] : null);
       if (clipMatch) {
         return {
           type: 'twitch',
-          embedUrl: `https://clips.twitch.tv/embed?clip=${clipMatch[1]}&parent=${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}&autoplay=false`,
+          embedUrl: `https://clips.twitch.tv/embed?clip=${clipMatch[1]}&parent=${parent}&autoplay=false`,
         };
       }
       const channelMatch = u.pathname.match(/^\/(\w+)$/);
       if (channelMatch) {
         return {
           type: 'twitch',
-          embedUrl: `https://player.twitch.tv/?channel=${channelMatch[1]}&parent=${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}&autoplay=false`,
+          embedUrl: `https://player.twitch.tv/?channel=${channelMatch[1]}&parent=${parent}&autoplay=false`,
         };
       }
     }

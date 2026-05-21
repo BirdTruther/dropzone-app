@@ -17,6 +17,8 @@ interface Props {
   postId: string;
   groupId: string;
   currentUserId: string;
+  currentUserName: string;   // ← added: real name for optimistic comments
+  currentUserAvatar?: string; // ← added: real avatar for optimistic comments
   postAuthorId: string;
   userRole?: string;
   initialCount?: number;
@@ -60,7 +62,16 @@ function CommentBody({ body, mentions, members }: { body: string; mentions?: str
   );
 }
 
-export default function CommentThread({ postId, groupId, currentUserId, postAuthorId, userRole, initialCount = 0 }: Props) {
+export default function CommentThread({
+  postId,
+  groupId,
+  currentUserId,
+  currentUserName,
+  currentUserAvatar,
+  postAuthorId,
+  userRole,
+  initialCount = 0,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [count, setCount] = useState(initialCount);
@@ -160,11 +171,12 @@ export default function CommentThread({ postId, groupId, currentUserId, postAuth
 
     const mentionedUserIds = pendingMentions.map(m => m.id);
 
+    // Use the real user name/avatar instead of the hardcoded 'You' placeholder
     const optimistic: Comment = {
       id: `optimistic-${Date.now()}`,
       body: body.trim(),
       createdAt: new Date().toISOString(),
-      author: { id: currentUserId, name: 'You', avatar: undefined },
+      author: { id: currentUserId, name: currentUserName, avatar: currentUserAvatar },
       mentions: mentionedUserIds,
     };
     setComments(prev => [...prev, optimistic]);
@@ -182,9 +194,11 @@ export default function CommentThread({ postId, groupId, currentUserId, postAuth
       const real: Comment = await res.json();
       setComments(prev => prev.map(c => c.id === optimistic.id ? real : c));
     } else {
+      // Roll back optimistic comment — capture current count to avoid
+      // race-condition with concurrent submits
       setComments(prev => prev.filter(c => c.id !== optimistic.id));
       setCount(c => c - 1);
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       setError(d.error ?? 'Failed to post comment');
     }
     setSubmitting(false);

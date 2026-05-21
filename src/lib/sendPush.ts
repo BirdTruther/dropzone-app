@@ -36,16 +36,19 @@ export async function sendPushToUser(
           message
         );
       } catch (err: unknown) {
-        // 410 Gone = subscription expired/revoked — clean it up
+        // 410 Gone = expired/revoked; 404 = not found — both mean the subscription
+        // is gone on the browser side and should be purged from the DB.
         if (
           typeof err === 'object' &&
           err !== null &&
-          'statusCode' in err &&
-          (err as { statusCode: number }).statusCode === 410
+          'statusCode' in err
         ) {
-          await prisma.pushSubscription.deleteMany({
-            where: { endpoint: sub.endpoint },
-          });
+          const { statusCode } = err as { statusCode: number };
+          if (statusCode === 410 || statusCode === 404) {
+            await prisma.pushSubscription.deleteMany({
+              where: { endpoint: sub.endpoint },
+            });
+          }
         }
       }
     })

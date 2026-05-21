@@ -214,11 +214,13 @@ function FacebookVideoEmbed({ url }: { url: string }) {
 
   return (
     <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: '0.5rem', background: '#000' }}>
+      {/* muted is required for autoPlay to work in Chrome/Safari — user can unmute via controls */}
       <video
         src={videoUrl}
         controls
         playsInline
         autoPlay
+        muted
         preload="metadata"
         style={{ width: '100%', maxHeight: 520, display: 'block' }}
       />
@@ -280,9 +282,15 @@ export default function PostEmbed({ url }: Props) {
   const embed = getEmbed(url);
   const twitterRef = useRef<HTMLDivElement>(null);
   const twitterInView = useInView(twitterRef);
+  // Prevent Twitter widgets.load() from firing more than once per mount,
+  // which would cause duplicate tweet embeds to stack.
+  const twitterRendered = useRef(false);
 
   useEffect(() => {
     if (embed.type !== 'twitter' || !twitterInView) return;
+    if (twitterRendered.current) return;
+    twitterRendered.current = true;
+
     if (!(window as any).twttr) {
       const script = document.createElement('script');
       script.src = 'https://platform.twitter.com/widgets.js';
