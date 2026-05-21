@@ -7,11 +7,12 @@ import Image from 'next/image';
 import PostEmbed from '@/components/PostEmbed';
 import PullToRefresh from '@/components/PullToRefresh';
 import CommentThread from '@/components/CommentThread';
+import Lightbox from '@/components/Lightbox';
 import { getEmbed } from '@/lib/embed';
 import { timeAgo, isoDate, fullDate } from '@/lib/timeAgo';
 
 interface Author { id: string; name: string; avatar?: string; }
-interface Reaction { id: string; emoji: string; userId: string; }
+interface Reaction { id: string; emoji: string; userId: string; userName?: string; }
 interface Post {
   id: string; url: string; title?: string; description?: string; image?: string;
   siteName?: string; note?: string; uploadUrl?: string; uploadType?: string;
@@ -48,13 +49,45 @@ const ROLE_BADGE: Record<string, React.CSSProperties> = {
   member: { background: 'var(--color-surface-2)', color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' },
 };
 
+function ReactionBreakdown({ reactions, onClose }: { reactions: Reaction[]; onClose: () => void }) {
+  const byEmoji: Record<string, string[]> = {};
+  reactions.forEach(r => {
+    if (!byEmoji[r.emoji]) byEmoji[r.emoji] = [];
+    byEmoji[r.emoji].push(r.userName ?? 'Someone');
+  });
+
+  return (
+    <div onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 150, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-xl)', padding: '1.25rem', minWidth: 260, maxWidth: 360, width: '90vw', boxShadow: '0 12px 40px rgba(0,0,0,0.3)', animation: 'lbZoomIn 0.18s cubic-bezier(0.16,1,0.3,1)' }}>
+        <style>{`@keyframes lbZoomIn { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }`}</style>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.9rem' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '0.95rem' }}>Reactions</h3>
+          <button onClick={onClose} style={{ color: 'var(--color-text-muted)', fontSize: '1.1rem', lineHeight: 1 }}>✕</button>
+        </div>
+        {Object.entries(byEmoji).map(([emoji, names]) => (
+          <div key={emoji} style={{ marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.25rem' }}>
+              <span style={{ fontSize: '1.1rem' }}>{emoji}</span>
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>{names.length}</span>
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', paddingLeft: '1.75rem' }}>
+              {names.slice(0, 8).join(', ')}{names.length > 8 ? ` +${names.length - 8} more` : ''}
+            </div>
+          </div>
+        ))}
+        {reactions.length === 0 && <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', textAlign: 'center', padding: '0.5rem 0' }}>No reactions yet.</p>}
+      </div>
+    </div>
+  );
+}
+
 export default function GroupPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const params = useParams();
   const groupId = params.id as string;
-  // Cast to any — NextAuth's default Session type doesn't include id or image;
-  // those are added via the session callback in authOptions.
   const sessionUser = (session?.user as any);
   const userId = sessionUser?.id;
   const userName: string = sessionUser?.name ?? 'You';
@@ -72,6 +105,11 @@ export default function GroupPage() {
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [sharedId, setSharedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Lightbox state
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  // Reaction breakdown state
+  const [reactionPopupPostId, setReactionPopupPostId] = useState<string | null>(null);
 
   const [showEdit, setShowEdit] = useState(false);
   const [editName, setEditName] = useState('');
@@ -216,6 +254,16 @@ export default function GroupPage() {
   return (
     <PullToRefresh onRefresh={loadPosts}>
     <div style={{ maxWidth: 700, margin: '0 auto', padding: '1rem' }}>
+
+      {/* Lightbox */}
+      {lightboxSrc && <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+
+      {/* Reaction breakdown popup */}
+      {reactionPopupPostId && (() => {
+        const post = posts.find(p => p.id === reactionPopupPostId);
+        if (!post) return null;
+        return <ReactionBreakdown reactions={post.reactions} onClose={() => setReactionPopupPostId(null)} />;
+      })()}
 
       {/* Edit Modal */}
       {showEdit && (
@@ -377,6 +425,7 @@ export default function GroupPage() {
             const embed = getEmbed(post.url);
             const hasEmbed = embed.type !== 'none';
             const isMyPost = post.author.id === userId;
+            const totalReactions = post.reactions.length;
             return (
               <div key={post.id} className="card" style={{ padding: '0.9rem', opacity: deletingId === post.id ? 0.5 : 1, transition: 'opacity 0.2s' }}>
                 {/* Post header */}
@@ -413,8 +462,14 @@ export default function GroupPage() {
                     <source src={post.uploadUrl} />
                   </video>
                 )}
+                {/* Clickable image → opens lightbox */}
                 {post.uploadType === 'image' && post.uploadUrl && (
-                  <img src={post.uploadUrl} alt="uploaded" style={{ width: '100%', borderRadius: 8, maxHeight: 500, objectFit: 'cover', marginBottom: '0.5rem' }} />
+                  <img
+                    src={post.uploadUrl}
+                    alt="uploaded"
+                    onClick={() => setLightboxSrc(post.uploadUrl!)}
+                    style={{ width: '100%', borderRadius: 8, maxHeight: 500, objectFit: 'cover', marginBottom: '0.5rem', cursor: 'zoom-in' }}
+                  />
                 )}
 
                 {!post.uploadUrl && post.url && (
@@ -443,14 +498,25 @@ export default function GroupPage() {
                   </a>
                 )}
 
-                {/* Reactions */}
-                <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.65rem', flexWrap: 'wrap' }}>
+                {/* Reactions + breakdown trigger */}
+                <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   {REACTION_OPTIONS.map(emoji => (
                     <button key={emoji} onClick={() => toggleReaction(post.id, emoji)}
                       style={{ padding: '0.25rem 0.55rem', borderRadius: 20, fontSize: '0.85rem', border: `1px solid ${myReactions.has(emoji) ? 'var(--color-accent)' : 'var(--color-border)'}`, background: myReactions.has(emoji) ? 'rgba(91,106,247,0.15)' : 'transparent', color: 'var(--color-text)', transition: 'all 0.12s', cursor: 'pointer' }}>
                       {emoji}{reactionCounts[emoji] ? ` ${reactionCounts[emoji]}` : ''}
                     </button>
                   ))}
+                  {totalReactions > 0 && (
+                    <button
+                      onClick={() => setReactionPopupPostId(post.id)}
+                      title="See who reacted"
+                      style={{ marginLeft: '0.2rem', fontSize: '0.72rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem 0.3rem', borderRadius: 4, transition: 'color 0.12s' }}
+                      onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-text)')}
+                      onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-muted)')}
+                    >
+                      {totalReactions} reaction{totalReactions !== 1 ? 's' : ''} ›
+                    </button>
+                  )}
                 </div>
 
                 {/* Comments */}
