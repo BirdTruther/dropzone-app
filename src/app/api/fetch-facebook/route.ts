@@ -28,9 +28,16 @@ async function isValidVideo(filePath: string): Promise<boolean> {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Allow either a logged-in user OR an internal background call from the share route
+  const internalSecret = process.env.INTERNAL_API_SECRET;
+  const callerSecret = req.headers.get('x-internal-secret');
+  const isInternalCall = internalSecret && callerSecret === internalSecret;
+
+  if (!isInternalCall) {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
   }
 
   let fbUrl: string;
@@ -70,7 +77,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Step 1: Download raw video to temp file (best quality, no re-encode yet)
+    // Step 1: Download raw video to temp file
     await execFileAsync('yt-dlp', [
       '--no-playlist',
       '--max-filesize', String(MAX_BYTES),
@@ -91,11 +98,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 2: Re-encode to H.264 (8-bit yuv420p) + AAC for guaranteed browser playback.
-    // -pix_fmt yuv420p: forces 8-bit color depth — required because newer Facebook
-    //   videos are often 10-bit (yuv420p10le) which Chrome cannot play in H.264.
-    // -movflags +faststart: moves the moov atom to the front for progressive playback.
-    // NOTE: -f mp4 is intentionally omitted — the output extension already implies
-    //   the container, and combining -f mp4 with +faststart can corrupt the moov atom.
+    // -pix_fmt yuv420p: forces 8-bit color depth
+    // -movflags +faststart: moves the moov atom to the front for progressive playback
     await execFileAsync('ffmpeg', [
       '-y',
       '-i', tmpPath,
@@ -109,10 +113,8 @@ export async function POST(req: NextRequest) {
       outPath,
     ], { timeout: 300_000 });
 
-    // Remove the raw temp file
     try { unlinkSync(tmpPath); } catch { /* ignore */ }
 
-    // Validate the final output
     if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES || !await isValidVideo(outPath)) {
       if (existsSync(outPath)) unlinkSync(outPath);
       return NextResponse.json(

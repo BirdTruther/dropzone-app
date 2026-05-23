@@ -3,11 +3,22 @@ import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { redirect } from 'next/navigation';
+import { existsSync } from 'fs';
+import path from 'path';
+import crypto from 'crypto';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { timeAgo, isoDate, fullDate } from '@/lib/timeAgo';
 
 const BASE_URL = process.env.NEXTAUTH_URL ?? 'https://link.birdsserver.cfd';
+
+function isFacebookUrl(url: string | null): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname.replace('www.', '');
+    return ['facebook.com', 'm.facebook.com', 'fb.watch'].includes(host);
+  } catch { return false; }
+}
 
 async function getPost(token: string) {
   const share = await prisma.shareToken.findUnique({
@@ -27,12 +38,17 @@ export async function generateMetadata({ params }: { params: { token: string } }
   const post = await getPost(params.token);
   if (!post) return { title: 'dropzone' };
 
-  const isVideo = post.uploadType === 'video' && post.uploadUrl;
+  const isUploadedVideo = post.uploadType === 'video' && post.uploadUrl;
   const isImage = post.uploadType === 'image' && post.uploadUrl;
+  const isFbVideo = isFacebookUrl(post.url);
   const title = post.note ?? post.title ?? `${post.author.name} dropped something`;
   const description = post.description ?? `Shared via dropzone`;
   const imageUrl = isImage ? `${BASE_URL}${post.uploadUrl}` : post.image ?? `${BASE_URL}/android-chrome-512x512.png`;
-  const videoUrl = isVideo ? `${BASE_URL}${post.uploadUrl}` : null;
+  const videoUrl = isUploadedVideo
+    ? `${BASE_URL}${post.uploadUrl}`
+    : isFbVideo
+    ? `${BASE_URL}/api/share/${params.token}/video`
+    : null;
 
   return {
     title,
@@ -74,10 +90,19 @@ export default async function SharePage({ params }: { params: { token: string } 
     redirect(`/groups/${post.groupId}`);
   }
 
-  const isVideo = post.uploadType === 'video' && post.uploadUrl;
+  const isUploadedVideo = post.uploadType === 'video' && post.uploadUrl;
   const isImage = post.uploadType === 'image' && post.uploadUrl;
+  const isFbVideo = isFacebookUrl(post.url);
 
-  // Build the destination URL to return to after login
+  // For Facebook videos, check if the file has already been downloaded
+  let fbVideoReady = false;
+  if (isFbVideo && post.url) {
+    const hash = crypto.createHash('sha256').update(post.url).digest('hex').slice(0, 16);
+    const filePath = path.join(process.cwd(), 'public', 'uploads', `fb_${hash}.mp4`);
+    fbVideoReady = existsSync(filePath);
+  }
+
+  const fbVideoUrl = isFbVideo ? `/api/share/${params.token}/video` : null;
   const callbackUrl = encodeURIComponent(`/groups/${post.groupId}`);
 
   return (
@@ -93,17 +118,38 @@ export default async function SharePage({ params }: { params: { token: string } 
         {/* Post card */}
         <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 12, overflow: 'hidden', marginBottom: '1.25rem' }}>
 
-          {isVideo && (
+          {/* Uploaded video (non-Facebook) */}
+          {isUploadedVideo && (
             <video controls autoPlay={false} style={{ width: '100%', maxHeight: 400, background: '#000', display: 'block' }}>
               <source src={`${BASE_URL}${post.uploadUrl}`} type="video/mp4" />
             </video>
+          )}
+
+          {/* Facebook video — ready to play */}
+          {isFbVideo && fbVideoReady && fbVideoUrl && (
+            <video controls autoPlay={false} style={{ width: '100%', maxHeight: 400, background: '#000', display: 'block' }}>
+              <source src={fbVideoUrl} type="video/mp4" />
+            </video>
+          )}
+
+          {/* Facebook video — still processing */}
+          {isFbVideo && !fbVideoReady && (
+            <div style={{ width: '100%', minHeight: 200, background: '#111', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+              <p style={{ color: '#666', fontSize: '0.85rem', textAlign: 'center', maxWidth: 260 }}>
+                Video is being prepared — check back in a moment or open in Dropzone.
+              </p>
+            </div>
           )}
 
           {isImage && (
             <img src={`${BASE_URL}${post.uploadUrl}`} alt="shared image" style={{ width: '100%', maxHeight: 500, objectFit: 'cover', display: 'block' }} />
           )}
 
-          {!isVideo && !isImage && post.image && (
+          {!isUploadedVideo && !isFbVideo && !isImage && post.image && (
             <img src={post.image} alt={post.title ?? 'preview'} style={{ width: '100%', maxHeight: 300, objectFit: 'cover', display: 'block' }} />
           )}
 
@@ -126,7 +172,7 @@ export default async function SharePage({ params }: { params: { token: string } 
             {post.note && <p style={{ fontSize: '0.95rem', color: '#fff', marginBottom: '0.5rem' }}>{post.note}</p>}
             {post.title && !post.note && <p style={{ fontWeight: 600, fontSize: '0.95rem', color: '#fff', marginBottom: '0.25rem' }}>{post.title}</p>}
             {post.description && <p style={{ fontSize: '0.82rem', color: '#888', marginBottom: '0.5rem' }}>{post.description}</p>}
-            {post.url && !post.uploadUrl && (
+            {post.url && !post.uploadUrl && !isFbVideo && (
               <a href={post.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.78rem', color: '#5b6af7', wordBreak: 'break-all' }}>{post.url}</a>
             )}
           </div>
