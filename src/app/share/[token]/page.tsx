@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { redirect } from 'next/navigation';
 import { existsSync } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -84,11 +83,11 @@ export default async function SharePage({ params }: { params: { token: string } 
   const post = await getPost(params.token);
   if (!post) notFound();
 
-  // If user is already authenticated, send them straight to the group
+  // Check session but NEVER redirect — the share preview page always renders.
+  // If the user is already logged in, the CTA goes straight to the group.
+  // If not, it goes to login with a callbackUrl.
   const session = await getServerSession(authOptions);
-  if (session) {
-    redirect(`/groups/${post.groupId}`);
-  }
+  const isLoggedIn = !!session;
 
   const isUploadedVideo = post.uploadType === 'video' && post.uploadUrl;
   const isImage = post.uploadType === 'image' && post.uploadUrl;
@@ -103,7 +102,15 @@ export default async function SharePage({ params }: { params: { token: string } 
   }
 
   const fbVideoUrl = isFbVideo ? `/api/share/${params.token}/video` : null;
-  const callbackUrl = encodeURIComponent(`/groups/${post.groupId}`);
+  const groupUrl = `/groups/${post.groupId}`;
+  const callbackUrl = encodeURIComponent(groupUrl);
+
+  // CTA destination: go straight to the group if logged in, otherwise login first
+  const ctaHref = isLoggedIn ? groupUrl : `/login?callbackUrl=${callbackUrl}`;
+  const ctaLabel = isLoggedIn ? 'View in Dropzone →' : 'View on Dropzone →';
+  const ctaSubtext = isLoggedIn
+    ? 'You\'re signed in — jump straight to the group.'
+    : 'This is a private share link. The group is invite-only.';
 
   return (
     <div style={{ minHeight: '100vh', background: '#0f0f0f', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.5rem' }}>
@@ -181,12 +188,12 @@ export default async function SharePage({ params }: { params: { token: string } 
         {/* CTA */}
         <div style={{ textAlign: 'center' }}>
           <Link
-            href={`/login?callbackUrl=${callbackUrl}`}
+            href={ctaHref}
             style={{ display: 'inline-block', background: '#5b6af7', color: '#fff', fontWeight: 600, fontSize: '0.9rem', padding: '0.65rem 1.5rem', borderRadius: 8, textDecoration: 'none' }}
           >
-            View on Dropzone →
+            {ctaLabel}
           </Link>
-          <p style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: '#555' }}>This is a private share link. The group is invite-only.</p>
+          <p style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: '#555' }}>{ctaSubtext}</p>
         </div>
       </div>
     </div>
