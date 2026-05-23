@@ -101,6 +101,7 @@ export default function GroupPage() {
   const [copied, setCopied] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [sharedId, setSharedId] = useState<string | null>(null);
@@ -197,16 +198,53 @@ export default function GroupPage() {
     setPosting(false);
   }
 
-  async function submitUpload() {
+  function submitUpload() {
     if (!uploadFile) return;
     setUploading(true);
+    setUploadProgress(0);
+
     const fd = new FormData();
     fd.append('file', uploadFile);
     if (note.trim()) fd.append('note', note.trim());
-    const res = await fetch(`/api/groups/${groupId}/upload`, { method: 'POST', body: fd });
-    if (res.ok) { const post = await res.json(); setPosts(prev => [post, ...prev]); setUploadFile(null); setNote(''); }
-    else { const d = await res.json(); alert(d.error ?? 'Upload failed'); }
-    setUploading(false);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `/api/groups/${groupId}/upload`);
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        setUploadProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+
+    xhr.onload = () => {
+      setUploading(false);
+      setUploadProgress(0);
+      if (xhr.status === 201) {
+        try {
+          const post = JSON.parse(xhr.responseText);
+          setPosts(prev => [post, ...prev]);
+          setUploadFile(null);
+          setNote('');
+        } catch {
+          alert('Upload succeeded but response was unreadable.');
+        }
+      } else {
+        try {
+          const d = JSON.parse(xhr.responseText);
+          alert(d.error ?? 'Upload failed');
+        } catch {
+          alert('Upload failed');
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      setUploading(false);
+      setUploadProgress(0);
+      alert('Upload failed — network error');
+    };
+
+    xhr.send(fd);
   }
 
   async function deletePost(postId: string) {
@@ -379,7 +417,7 @@ export default function GroupPage() {
             <span>{uploadFile.type.startsWith('video') ? '🎬' : '🖼️'}</span>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{uploadFile.name}</span>
             <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{(uploadFile.size / 1024 / 1024).toFixed(1)}MB</span>
-            <button onClick={() => setUploadFile(null)} style={{ color: 'var(--color-text-muted)', fontSize: '1rem' }}>✕</button>
+            <button onClick={() => setUploadFile(null)} disabled={uploading} style={{ color: 'var(--color-text-muted)', fontSize: '1rem' }}>✕</button>
           </div>
         ) : (
           <form onSubmit={submitPost} style={{ display: 'contents' }}>
@@ -393,11 +431,34 @@ export default function GroupPage() {
             </div>
           </form>
         )}
-        <input placeholder="Add a note (optional)" value={note} onChange={e => setNote(e.target.value)} />
+        <input placeholder="Add a note (optional)" value={note} onChange={e => setNote(e.target.value)} disabled={uploading} />
+
+        {/* Upload progress bar — only visible while uploading */}
+        {uploading && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <div style={{
+              width: '100%', height: 6, borderRadius: 999,
+              background: 'var(--color-surface-2)',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%',
+                width: `${uploadProgress}%`,
+                borderRadius: 999,
+                background: 'var(--color-accent, #5b6af7)',
+                transition: 'width 0.15s ease',
+              }} />
+            </div>
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', textAlign: 'right' }}>
+              {uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : 'Processing…'}
+            </span>
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           {uploadFile ? (
             <button className="btn btn-primary" onClick={submitUpload} disabled={uploading}>
-              {uploading ? 'Uploading...' : 'Drop It 📎'}
+              {uploading ? (uploadProgress < 100 ? `${uploadProgress}%` : 'Processing…') : 'Drop It 📎'}
             </button>
           ) : (
             <button type="submit" form="link-form" className="btn btn-primary" disabled={posting || !url.trim()}
