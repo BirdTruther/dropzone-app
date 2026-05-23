@@ -1,11 +1,14 @@
 'use client';
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get('callbackUrl') ?? '/groups';
+
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
@@ -35,7 +38,7 @@ export default function LoginPage() {
     });
     setLoading(false);
     if (result?.error) { setError('Invalid email or password'); return; }
-    router.push('/groups');
+    router.push(callbackUrl);
   }
 
   return (
