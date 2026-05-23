@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import PostEmbed from '@/components/PostEmbed';
+import UploadedVideo from '@/components/UploadedVideo';
 import PullToRefresh from '@/components/PullToRefresh';
 import CommentThread from '@/components/CommentThread';
 import Lightbox from '@/components/Lightbox';
@@ -16,6 +17,7 @@ interface Reaction { id: string; emoji: string; userId: string; userName?: strin
 interface Post {
   id: string; url: string; title?: string; description?: string; image?: string;
   siteName?: string; note?: string; uploadUrl?: string; uploadType?: string;
+  uploadStatus?: string | null;
   expiresAt?: string; createdAt: string; author: Author; reactions: Reaction[];
   _count?: { comments: number };
 }
@@ -107,9 +109,7 @@ export default function GroupPage() {
   const [sharedId, setSharedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Lightbox state
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  // Reaction breakdown state
   const [reactionPopupPostId, setReactionPopupPostId] = useState<string | null>(null);
 
   const [showEdit, setShowEdit] = useState(false);
@@ -293,10 +293,8 @@ export default function GroupPage() {
     <PullToRefresh onRefresh={loadPosts}>
     <div style={{ maxWidth: 700, margin: '0 auto', padding: '1rem' }}>
 
-      {/* Lightbox */}
       {lightboxSrc && <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
 
-      {/* Reaction breakdown popup */}
       {reactionPopupPostId && (() => {
         const post = posts.find(p => p.id === reactionPopupPostId);
         if (!post) return null;
@@ -433,21 +431,10 @@ export default function GroupPage() {
         )}
         <input placeholder="Add a note (optional)" value={note} onChange={e => setNote(e.target.value)} disabled={uploading} />
 
-        {/* Upload progress bar — only visible while uploading */}
         {uploading && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-            <div style={{
-              width: '100%', height: 6, borderRadius: 999,
-              background: 'var(--color-surface-2)',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                height: '100%',
-                width: `${uploadProgress}%`,
-                borderRadius: 999,
-                background: 'var(--color-accent, #5b6af7)',
-                transition: 'width 0.15s ease',
-              }} />
+            <div style={{ width: '100%', height: 6, borderRadius: 999, background: 'var(--color-surface-2)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${uploadProgress}%`, borderRadius: 999, background: 'var(--color-accent, #5b6af7)', transition: 'width 0.15s ease' }} />
             </div>
             <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', textAlign: 'right' }}>
               {uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : 'Processing…'}
@@ -467,7 +454,8 @@ export default function GroupPage() {
             </button>
           )}
         </div>
-        <input ref={fileInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/gif,image/webp"
+        <input ref={fileInputRef} type="file"
+          accept="video/mp4,video/quicktime,video/webm,video/x-msvideo,video/x-matroska,video/mpeg,video/3gpp,image/jpeg,image/png,image/gif,image/webp"
           style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) setUploadFile(f); e.target.value = ''; }} />
       </div>
 
@@ -489,7 +477,6 @@ export default function GroupPage() {
             const totalReactions = post.reactions.length;
             return (
               <div key={post.id} className="card" style={{ padding: '0.9rem', opacity: deletingId === post.id ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-                {/* Post header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <AuthorAvatar author={post.author} />
@@ -518,12 +505,16 @@ export default function GroupPage() {
 
                 {post.note && <p style={{ marginBottom: '0.6rem', fontSize: '0.9rem' }}>{post.note}</p>}
 
+                {/* Uploaded video — uses UploadedVideo which handles processing/error/ready states */}
                 {post.uploadType === 'video' && post.uploadUrl && (
-                  <video controls style={{ width: '100%', borderRadius: 8, marginBottom: '0.5rem', maxHeight: 400, background: '#000' }}>
-                    <source src={post.uploadUrl} />
-                  </video>
+                  <UploadedVideo
+                    postId={post.id}
+                    groupId={groupId}
+                    initialStatus={post.uploadStatus}
+                    uploadUrl={post.uploadUrl}
+                  />
                 )}
-                {/* Clickable image → opens lightbox */}
+
                 {post.uploadType === 'image' && post.uploadUrl && (
                   <img
                     src={post.uploadUrl}
@@ -559,7 +550,6 @@ export default function GroupPage() {
                   </a>
                 )}
 
-                {/* Reactions + breakdown trigger */}
                 <div style={{ display: 'flex', gap: '0.35rem', marginTop: '0.65rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   {REACTION_OPTIONS.map(emoji => (
                     <button key={emoji} onClick={() => toggleReaction(post.id, emoji)}
@@ -580,7 +570,6 @@ export default function GroupPage() {
                   )}
                 </div>
 
-                {/* Comments */}
                 <CommentThread
                   postId={post.id}
                   groupId={groupId}

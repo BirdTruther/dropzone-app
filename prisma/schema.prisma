@@ -62,17 +62,18 @@ model GroupMember {
 }
 
 model Post {
-  id          String    @id @default(cuid())
-  url         String    @default("")
-  title       String?
-  description String?
-  image       String?
-  siteName    String?
-  note        String?
-  uploadUrl   String?
-  uploadType  String?
-  expiresAt   DateTime?
-  createdAt   DateTime  @default(now())
+  id            String    @id @default(cuid())
+  url           String    @default("")
+  title         String?
+  description   String?
+  image         String?
+  siteName      String?
+  note          String?
+  uploadUrl     String?
+  uploadType    String?
+  uploadStatus  String?   // null = not an upload | 'processing' | 'ready' | 'error'
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
 
   author      User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
   authorId    String
