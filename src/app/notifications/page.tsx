@@ -50,11 +50,17 @@ export default function NotificationsPage() {
   async function markAllRead() {
     await fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    const channel = new BroadcastChannel('notifications');
+    channel.postMessage({ type: 'read' });
+    channel.close();
   }
 
   async function markOneRead(id: string) {
     await fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [id] }) });
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    const channel = new BroadcastChannel('notifications');
+    channel.postMessage({ type: 'read' });
+    channel.close();
   }
 
   const unread = notifications.filter(n => !n.read).length;
@@ -83,10 +89,15 @@ export default function NotificationsPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {notifications.map(n => {
+            const handleClick = async () => {
+              if (!n.read) await markOneRead(n.id);
+              if (n.link) router.push(n.link);
+            };
+
             const inner = (
               <div
                 key={n.id}
-                onClick={() => !n.read && markOneRead(n.id)}
+                onClick={n.link ? handleClick : (!n.read ? () => markOneRead(n.id) : undefined)}
                 style={{
                   display: 'flex', alignItems: 'flex-start', gap: '0.85rem',
                   padding: '0.9rem 1rem',
@@ -127,9 +138,7 @@ export default function NotificationsPage() {
               </div>
             );
 
-            return n.link ? (
-              <Link key={n.id} href={n.link} style={{ textDecoration: 'none' }}>{inner}</Link>
-            ) : (
+            return (
               <div key={n.id}>{inner}</div>
             );
           })}

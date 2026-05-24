@@ -30,6 +30,21 @@ export default function Header() {
     return () => clearInterval(interval);
   }, [user]);
 
+  // Listen for read events broadcast from the notifications page
+  useEffect(() => {
+    if (!user) return;
+    const channel = new BroadcastChannel('notifications');
+    channel.onmessage = (event) => {
+      if (event.data?.type === 'read') {
+        fetch('/api/notifications')
+          .then(r => r.json())
+          .then(d => setUnread(d.unread ?? 0))
+          .catch(() => {});
+      }
+    };
+    return () => channel.close();
+  }, [user]);
+
   return (
     <header style={{
       position: 'sticky',
