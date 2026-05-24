@@ -25,6 +25,7 @@ A private group link-sharing web app. Share links, videos, and images with frien
 - 🔔 Push notifications — get alerted about new drops and reactions even when the app is closed
 - 🌙 Dark mode
 - 📹 Facebook video embeds — Reels and videos download and play natively in the feed
+- 🔴 Live notification badge — header badge syncs immediately when individual notifications are read
 
 ## Admin Panel
 
@@ -96,11 +97,8 @@ sudo docker compose up -d
 App runs at: `http://localhost:3000`
 
 ### 6. Sync Database Schema
-```bash
-sudo docker exec -it dropzone-app npx prisma db push
-```
 
-> The app uses `prisma db push` for schema sync — no migration files required. Run this once after first deploy and after any schema changes.
+Schema migrations run automatically via the `migrate` service in `docker-compose.yml` every time you run `updatedropzone`. Manual host-level `npx prisma migrate dev` or `npx prisma db push` are **not needed** and may fail on the host due to a Prisma 7 ESM compatibility issue with Node 18/20. Always use the Docker-based migration flow.
 
 ## Facebook Video Embeds
 
@@ -146,6 +144,14 @@ Dropzone supports Web Push notifications via the [Web Push Protocol](https://www
 - iOS 16.4+ supports push notifications for installed PWAs (added to home screen)
 - Expired or revoked subscriptions are automatically cleaned up
 
+## Notification Badge Sync
+
+The header notification badge uses a `BroadcastChannel` (named `notifications`) to stay in sync with the notifications page in real time. When a notification is marked read on the notifications page — individually or via "Mark all read" — the header badge updates immediately without waiting for the next 15-second poll cycle.
+
+- `src/app/notifications/page.tsx` posts a `{ type: 'read' }` message after any successful PATCH
+- `src/components/Header.tsx` listens on the same channel and re-fetches `/api/notifications` on receipt
+- Linked notifications use `router.push()` programmatically after awaiting the PATCH, ensuring the read state is persisted before navigation
+
 ## Folder Structure
 ```
 uploads/                        # Host bind mount — all stored media (survives rebuilds)
@@ -154,6 +160,7 @@ src/
     (auth)/login/               # Login + forgot password pages
     admin/                      # Admin panel (users & posts)
     groups/                     # Groups list + group feed
+    notifications/              # Notifications page (read/mark all read)
     profile/                    # Profile, password, notifications settings
     api/
       posts/[id]/
@@ -163,12 +170,15 @@ src/
       fetch-facebook/           # yt-dlp download + ffprobe validation endpoint
       uploads/[filename]/       # Serve uploaded files
       storage/                  # GET storage usage stats
+      notifications/            # GET + PATCH notifications (read state)
     share/[token]/              # Public share preview page
     forgot-password/            # Lockout help page
   components/
     CommentThread.tsx           # Collapsible comment thread component
+    Header.tsx                  # App header with notification badge (BroadcastChannel sync)
     PostEmbed.tsx               # Embed router (YouTube/TikTok/Spotify/Facebook/Twitter/Twitch)
     PushNotificationToggle.tsx  # Enable/disable push per device
+    UploadedVideo.tsx           # Video upload progress + playback component
   lib/
     embed.ts            # URL → embed type detection
     timeAgo.ts          # Relative timestamp utility (timeAgo, isoDate, fullDate)

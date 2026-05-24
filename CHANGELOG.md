@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.90 — May 24, 2026
+
+### Notifications
+- Notification badge in the header now decreases immediately when you mark an individual notification as read — no longer requires "Mark all read" to clear the count
+- Notification badge stays in sync across the app in real time
+
+### Bug Fixes
+- Fixed uploaded video progress bar and spinner using the wrong brand color
+
+---
+
 ## v0.89.0 — May 17, 2026
 
 ### Facebook Video Embeds
