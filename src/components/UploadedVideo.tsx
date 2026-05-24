@@ -66,7 +66,7 @@ export default function UploadedVideo({ postId, groupId, initialStatus, uploadUr
         gap: '0.75rem',
       }}>
         {/* Spinner */}
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent, #5b6af7)" strokeWidth="2"
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" strokeWidth="2"
           style={{ animation: 'spin 1.2s linear infinite', flexShrink: 0 }}>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           <circle cx="12" cy="12" r="10" strokeDasharray="40 20" />
@@ -76,7 +76,7 @@ export default function UploadedVideo({ postId, groupId, initialStatus, uploadUr
           <div style={{
             height: '100%',
             borderRadius: 999,
-            background: 'var(--color-accent, #5b6af7)',
+            background: 'var(--color-primary)',
             animation: 'indeterminate 1.6s ease-in-out infinite',
             width: '40%',
           }} />
@@ -103,7 +103,7 @@ export default function UploadedVideo({ postId, groupId, initialStatus, uploadUr
         gap: '0.6rem',
       }}>
         <span style={{ fontSize: '1.2rem' }}>⚠️</span>
-        <span style={{ fontSize: '0.85rem', color: 'var(--color-danger, #e05c5c)' }}>
+        <span style={{ fontSize: '0.85rem', color: 'var(--color-error, #e05c5c)' }}>
           Video conversion failed. The file format may not be supported.
         </span>
       </div>
