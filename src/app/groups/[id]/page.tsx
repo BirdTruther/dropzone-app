@@ -434,7 +434,7 @@ export default function GroupPage() {
         {uploading && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
             <div style={{ width: '100%', height: 6, borderRadius: 999, background: 'var(--color-surface-2)', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${uploadProgress}%`, borderRadius: 999, background: 'var(--color-accent, #5b6af7)', transition: 'width 0.15s ease' }} />
+              <div style={{ height: '100%', width: `${uploadProgress}%`, borderRadius: 999, background: 'var(--color-primary)', transition: 'width 0.15s ease' }} />
             </div>
             <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', textAlign: 'right' }}>
               {uploadProgress < 100 ? `Uploading… ${uploadProgress}%` : 'Processing…'}
@@ -454,9 +454,13 @@ export default function GroupPage() {
             </button>
           )}
         </div>
-        <input ref={fileInputRef} type="file"
-          accept="video/mp4,video/quicktime,video/webm,video/x-msvideo,video/x-matroska,video/mpeg,video/3gpp,image/jpeg,image/png,image/gif,image/webp"
-          style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) setUploadFile(f); e.target.value = ''; }} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="video/mp4,video/quicktime,video/webm,video/x-msvideo,video/x-matroska,video/mpeg,video/3gpp,image/jpeg,image/png,image/gif,image/webp,image/jxr,image/vnd.ms-photo,.jxr"
+          style={{ display: 'none' }}
+          onChange={e => { const f = e.target.files?.[0]; if (f) setUploadFile(f); e.target.value = ''; }}
+        />
       </div>
 
       {/* Feed */}

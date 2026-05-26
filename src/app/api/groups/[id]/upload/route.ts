@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { writeFile, mkdir, unlink, rename } from 'fs/promises';
+import { writeFile, mkdir, unlink } from 'fs/promises';
 import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
@@ -21,7 +21,24 @@ const ALLOWED_VIDEO = [
   'video/mpeg',
   'video/3gpp',
 ];
-const ALLOWED_IMAGE = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ALLOWED_IMAGE = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/jxr',             // Windows HDR screenshots
+  'image/vnd.ms-photo',    // alternate MIME for JXR
+];
+
+// Extensions that require server-side conversion to WebP before serving
+const JXR_EXTENSIONS = ['.jxr'];
+const JXR_MIMES = new Set(['image/jxr', 'image/vnd.ms-photo']);
+
+function isJxrFile(file: File): boolean {
+  if (JXR_MIMES.has(file.type)) return true;
+  const ext = '.' + (file.name.split('.').pop() ?? '').toLowerCase();
+  return JXR_EXTENSIONS.includes(ext);
+}
 
 const MIN_VALID_BYTES = 10 * 1024; // 10 KB
 
@@ -38,6 +55,11 @@ async function convertToMp4(tmpPath: string, outPath: string): Promise<void> {
     '-movflags', '+faststart',
     outPath,
   ], { timeout: 600_000 }); // 10 min max for large videos
+}
+
+async function convertJxrToWebp(tmpPath: string, outPath: string): Promise<void> {
+  // ImageMagick's `convert` handles JXR reliably on Alpine via the imagemagick package
+  await execFileAsync('convert', [tmpPath, outPath], { timeout: 60_000 });
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -60,7 +82,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'File too large (max 100MB)' }, { status: 400 });
 
   const isVideo = ALLOWED_VIDEO.includes(file.type);
-  const isImage = ALLOWED_IMAGE.includes(file.type);
+  // Check image by MIME first; fall back to extension for JXR since Windows may send application/octet-stream
+  const isImage = ALLOWED_IMAGE.includes(file.type) || isJxrFile(file);
   if (!isVideo && !isImage) return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
 
   const currentSize = await getUploadsSize();
@@ -74,7 +97,46 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const id = randomUUID();
 
   if (isImage) {
-    // Images: write directly, no conversion needed
+    if (isJxrFile(file)) {
+      // JXR: write temp file, convert to WebP via ImageMagick, clean up temp
+      const tmpFilename = `${id}.tmp.jxr`;
+      const tmpPath = join(uploadDir, tmpFilename);
+      const outFilename = `${id}.webp`;
+      const outPath = join(uploadDir, outFilename);
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      await writeFile(tmpPath, buffer);
+
+      try {
+        await convertJxrToWebp(tmpPath, outPath);
+
+        if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES) {
+          throw new Error('JXR conversion produced no output');
+        }
+      } catch (err) {
+        await unlink(tmpPath).catch(() => {});
+        console.error('[upload] JXR conversion failed:', err);
+        return NextResponse.json({ error: 'Could not convert JXR image. The file may be corrupt.' }, { status: 422 });
+      }
+
+      await unlink(tmpPath).catch(() => {});
+
+      const post = await prisma.post.create({
+        data: {
+          url: '',
+          note: note || null,
+          uploadUrl: `/api/uploads/${outFilename}`,
+          uploadType: 'image',
+          uploadStatus: null,
+          authorId: user.id,
+          groupId: params.id,
+        },
+        include: { author: { select: { id: true, name: true, avatar: true } }, reactions: true },
+      });
+      return NextResponse.json(post, { status: 201 });
+    }
+
+    // Standard images: write directly, no conversion needed
     const ext = file.name.split('.').pop() ?? 'jpg';
     const filename = `${id}.${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -86,7 +148,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         note: note || null,
         uploadUrl: `/api/uploads/${filename}`,
         uploadType: 'image',
-        uploadStatus: null, // not used for images
+        uploadStatus: null,
         authorId: user.id,
         groupId: params.id,
       },

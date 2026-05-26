@@ -14,7 +14,8 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 # Install Python + pip + yt-dlp (always latest) + ffmpeg for Facebook video downloads
-RUN apk add --no-cache python3 py3-pip ffmpeg \
+# Install imagemagick for JXR (Windows HDR screenshot) -> WebP conversion
+RUN apk add --no-cache python3 py3-pip ffmpeg imagemagick \
   && pip3 install --break-system-packages --no-cache-dir --upgrade yt-dlp
 
 ENV NODE_ENV=production
