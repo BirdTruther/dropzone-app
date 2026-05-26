@@ -10,16 +10,17 @@ COPY . .
 # Regenerate Prisma client from schema before building
 RUN npx prisma generate && npm run build
 
-# Build JxrDecApp/JxrEncApp from jxrlib source so ImageMagick can decode JXR files.
-# -fpermissive is required because jxrlib uses C89-era implicit pointer casts
-# that GCC 15 rejects as errors by default.
+# Build JxrDecApp/JxrEncApp from libjxr (cmake-based fork, builds cleanly on Alpine).
+# This provides the binaries that ImageMagick's JXR delegate requires.
 FROM node:20-alpine AS jxrlib
-RUN apk add --no-cache git gcc g++ make musl-dev \
-  && git clone --depth 1 https://github.com/4creators/jxrlib.git /jxrlib \
-  && cd /jxrlib \
-  && make -j$(nproc) CFLAGS="-D__ANSI__ -DDISABLE_PERF_MEASUREMENT -w -O -fpermissive" \
-  && cp /jxrlib/JxrDecApp/JxrDecApp /usr/local/bin/JxrDecApp \
-  && cp /jxrlib/JxrEncApp/JxrEncApp /usr/local/bin/JxrEncApp \
+RUN apk add --no-cache git gcc g++ make cmake musl-dev \
+  && git clone --depth 1 https://github.com/curasystems/libjxr.git /libjxr \
+  && cmake -S /libjxr -B /libjxr/build \
+       -DCMAKE_BUILD_TYPE=Release \
+       -DCMAKE_C_FLAGS="-w -fpermissive" \
+  && cmake --build /libjxr/build --parallel $(nproc) \
+  && find /libjxr/build -name 'JxrDecApp' -exec cp {} /usr/local/bin/JxrDecApp \; \
+  && find /libjxr/build -name 'JxrEncApp' -exec cp {} /usr/local/bin/JxrEncApp \; \
   && chmod +x /usr/local/bin/JxrDecApp /usr/local/bin/JxrEncApp
 
 FROM node:20-alpine AS runner
