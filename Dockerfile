@@ -28,9 +28,12 @@ RUN apk add --no-cache git gcc g++ make musl-dev \
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Install Python + pip + yt-dlp (always latest) + ffmpeg for video processing
-# Install imagemagick for image conversion (JXR support via JxrDecApp below)
-RUN apk add --no-cache python3 py3-pip ffmpeg imagemagick \
+# Install Python + pip + yt-dlp (always latest) + ffmpeg for video processing.
+# Install imagemagick + imagemagick-tiff for image conversion.
+# imagemagick-tiff adds the TIFF codec module that the base imagemagick package
+# omits on Alpine. Xbox/Windows 11 HDR game screenshots (.jxr) are TIFF
+# containers with JXR-compressed pixel data; magick needs libtiff to open them.
+RUN apk add --no-cache python3 py3-pip ffmpeg imagemagick imagemagick-tiff \
   && pip3 install --break-system-packages --no-cache-dir --upgrade yt-dlp
 
 # Copy JxrDecApp/JxrEncApp binaries built from source (required by ImageMagick for JXR)
