@@ -58,9 +58,10 @@ async function convertToMp4(tmpPath: string, outPath: string): Promise<void> {
 }
 
 async function convertJxrToPng(tmpPath: string, outPath: string): Promise<void> {
-  // ImageMagick v7 `magick` delegates JXR decoding to JxrDecApp (built from
-  // jxrlib source and installed at /usr/local/bin in the Dockerfile).
-  await execFileAsync('magick', [tmpPath, outPath], { timeout: 60_000 });
+  // Alpine's imagemagick package is v6 — the binary is `convert`, not `magick`.
+  // JxrDecApp (built from jxrlib and installed at /usr/local/bin) is the
+  // ImageMagick delegate that does the actual JXR decoding.
+  await execFileAsync('convert', [tmpPath, outPath], { timeout: 60_000 });
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
