@@ -30,7 +30,7 @@ const ALLOWED_IMAGE = [
   'image/vnd.ms-photo',    // alternate MIME for JXR
 ];
 
-// Extensions that require server-side conversion to WebP before serving
+// Extensions that require server-side conversion to PNG before serving
 const JXR_EXTENSIONS = ['.jxr'];
 const JXR_MIMES = new Set(['image/jxr', 'image/vnd.ms-photo']);
 
@@ -57,9 +57,16 @@ async function convertToMp4(tmpPath: string, outPath: string): Promise<void> {
   ], { timeout: 600_000 }); // 10 min max for large videos
 }
 
-async function convertJxrToWebp(tmpPath: string, outPath: string): Promise<void> {
-  // ImageMagick's `convert` handles JXR reliably on Alpine via the imagemagick package
-  await execFileAsync('convert', [tmpPath, outPath], { timeout: 60_000 });
+async function convertJxrToPng(tmpPath: string, outPath: string): Promise<void> {
+  // ffmpeg has a native JXR decoder (ljpegb). Force image2 demuxer so it
+  // treats the file as a single still frame rather than a video stream.
+  await execFileAsync('ffmpeg', [
+    '-y',
+    '-f', 'image2',
+    '-i', tmpPath,
+    '-vframes', '1',
+    outPath,
+  ], { timeout: 60_000 });
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -98,17 +105,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (isImage) {
     if (isJxrFile(file)) {
-      // JXR: write temp file, convert to WebP via ImageMagick, clean up temp
+      // JXR: write temp file, convert to PNG via ffmpeg's native JXR decoder, clean up temp
       const tmpFilename = `${id}.tmp.jxr`;
       const tmpPath = join(uploadDir, tmpFilename);
-      const outFilename = `${id}.webp`;
+      const outFilename = `${id}.png`;
       const outPath = join(uploadDir, outFilename);
 
       const buffer = Buffer.from(await file.arrayBuffer());
       await writeFile(tmpPath, buffer);
 
       try {
-        await convertJxrToWebp(tmpPath, outPath);
+        await convertJxrToPng(tmpPath, outPath);
 
         if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES) {
           throw new Error('JXR conversion produced no output');
