@@ -52,69 +52,49 @@ async function convertToMp4(tmpPath: string, outPath: string): Promise<void> {
 }
 
 /**
- * Convert JXR -> PNG
+ * Convert JXR -> PNG using ffmpeg.
  *
- * Full diagnosis of why previous approaches failed:
- *  - jxrlib (JxrDecApp) exits "Unsupported format" on modern HDR tiled JXR.
- *    WRONG: actually it DOES run (exit code 150 is a recoverable decode warning),
- *    but it outputs a .pnm — and our earlier test used a fake file.
- *    RE-DIAGNOSIS from latest logs:
- *  - magick JXR:file -> PNG fails with "no decode delegate for TIFF".
- *    The JXR delegate in delegates.xml calls JxrDecApp with -o file.tiff,
- *    then tries to read that TIFF back — but Alpine's ImageMagick has no libtiff.
+ * Why ffmpeg instead of JxrDecApp / ImageMagick:
+ *   - jxrlib (JxrDecApp) cannot decode the HD Photo "Extended" / tiled JXR
+ *     container used by Windows 11 / Xbox HDR screenshots. It exits with
+ *     code 150 "Unsupported format in JPEG XR" regardless of output format.
+ *   - ImageMagick's JXR delegate also calls JxrDecApp internally (same failure),
+ *     and Alpine's imagemagick package has no libtiff, making the TIFF
+ *     intermediate path fail as well.
+ *   - ffmpeg ships with a full, modern JXR decoder (via its internal xwddec
+ *     and jxr demuxer) and is already installed in the container for video.
  *
- * CORRECT FIX:
- *  Call JxrDecApp directly with -o file.bmp and -c 0 (force 24bppBGR).
- *  BMP output is always supported by JxrDecApp (<=8bpc).
- *  Then use magick to convert BMP -> PNG. BMP is a built-in IM format, no delegate.
+ * Pipeline:
+ *   ffmpeg -i file.jxr -vf scale=iw:ih -pix_fmt rgb24 -frames:v 1 file.png
  *
- *  The HDR color depth gets tone-mapped to 8bpc by -c 0 which is fine for display.
+ *   -pix_fmt rgb24   : tone-maps HDR float/half-float pixel formats to 8bpc
+ *   -frames:v 1      : output exactly one frame (JXR is treated as single-frame video)
+ *   -vf scale=iw:ih  : forces pixel format conversion through the scale filter
+ *                      which handles wide-gamut / HDR -> sRGB correctly
  */
 async function convertJxrToPng(jxrPath: string, pngOutPath: string): Promise<void> {
-  const bmpPath = pngOutPath.replace(/\.png$/, '.tmp.bmp');
-
-  console.log(`[jxr] Pipeline: JxrDecApp(jxr->bmp) then magick(bmp->png)`);
-  console.log(`[jxr] Input: ${jxrPath} (${existsSync(jxrPath) ? statSync(jxrPath).size : 'MISSING'} bytes)`);
-  console.log(`[jxr] BMP intermediate: ${bmpPath}`);
+  console.log(`[jxr] ffmpeg JXR->PNG: ${jxrPath} -> ${pngOutPath}`);
+  console.log(`[jxr] Input size: ${existsSync(jxrPath) ? statSync(jxrPath).size : 'MISSING'} bytes`);
 
   try {
-    // Step 1: JxrDecApp -c 0 forces 24bppBGR output -> .bmp (always works, no libtiff needed)
-    try {
-      const r = await execFileAsync('/usr/local/bin/JxrDecApp', [
-        '-i', jxrPath,
-        '-o', bmpPath,
-        '-c', '0',   // 24bppBGR — the only format guaranteed to produce a BMP JxrDecApp can write
-      ], { timeout: 120_000 });
-      console.log(`[jxr] JxrDecApp stdout: ${r.stdout}`);
-      console.log(`[jxr] JxrDecApp stderr: ${r.stderr}`);
-    } catch (e: any) {
-      console.error(`[jxr] JxrDecApp FAILED code=${e.code} stdout=${e.stdout} stderr=${e.stderr}`);
-      throw e;
-    }
-
-    if (!existsSync(bmpPath) || statSync(bmpPath).size < MIN_VALID_BYTES) {
-      throw new Error(`JxrDecApp produced no valid BMP (size=${existsSync(bmpPath) ? statSync(bmpPath).size : 0})`);
-    }
-    console.log(`[jxr] BMP produced: ${statSync(bmpPath).size} bytes`);
-
-    // Step 2: magick BMP -> PNG (BMP is a built-in IM format, zero delegates required)
-    try {
-      const r = await execFileAsync('magick', [
-        bmpPath,
-        '-strip',
-        pngOutPath,
-      ], { timeout: 60_000 });
-      console.log(`[jxr] magick stdout: ${r.stdout}`);
-      console.log(`[jxr] magick stderr: ${r.stderr}`);
-    } catch (e: any) {
-      console.error(`[jxr] magick BMP->PNG FAILED code=${e.code} stdout=${e.stdout} stderr=${e.stderr}`);
-      throw e;
-    }
-
-    const pngSize = existsSync(pngOutPath) ? statSync(pngOutPath).size : 0;
-    console.log(`[jxr] PNG produced: ${pngSize} bytes`);
-  } finally {
-    if (existsSync(bmpPath)) unlink(bmpPath).catch(() => {});
+    const r = await execFileAsync('ffmpeg', [
+      '-y',
+      '-i', jxrPath,
+      '-vf', 'scale=iw:ih',
+      '-pix_fmt', 'rgb24',
+      '-frames:v', '1',
+      pngOutPath,
+    ], { timeout: 120_000 });
+    console.log(`[jxr] ffmpeg stdout: ${r.stdout}`);
+    console.log(`[jxr] ffmpeg stderr: ${r.stderr}`);
+  } catch (e: any) {
+    console.error(`[jxr] ffmpeg FAILED`);
+    console.error(`[jxr]   code:    ${e.code}`);
+    console.error(`[jxr]   signal:  ${e.signal}`);
+    console.error(`[jxr]   stdout:  ${e.stdout}`);
+    console.error(`[jxr]   stderr:  ${e.stderr}`);
+    console.error(`[jxr]   message: ${e.message}`);
+    throw e;
   }
 }
 
@@ -159,6 +139,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (isImage) {
     if (isJxrFile(file)) {
+      // ffmpeg sniffs the JXR format from file headers, extension doesn't matter,
+      // but keeping .jxr is fine and consistent.
       const jxrFilename = `${id}.tmp.jxr`;
       const jxrPath = join(uploadDir, jxrFilename);
       const outFilename = `${id}.png`;
@@ -172,7 +154,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         await convertJxrToPng(jxrPath, outPath);
 
         if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES) {
-          throw new Error('Pipeline produced no valid PNG');
+          throw new Error('ffmpeg produced no valid PNG output');
         }
         console.log(`[upload] JXR->PNG success: ${statSync(outPath).size} bytes`);
       } catch (err: any) {
@@ -201,7 +183,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json(post, { status: 201 });
     }
 
-    // Standard image
+    // Standard image — write directly
     const ext = file.name.split('.').pop() ?? 'jpg';
     const filename = `${id}.${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
