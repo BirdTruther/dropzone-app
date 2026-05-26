@@ -51,27 +51,78 @@ async function convertToMp4(tmpPath: string, outPath: string): Promise<void> {
   ], { timeout: 600_000 });
 }
 
+/**
+ * Convert a Windows/Xbox JXR screenshot to PNG.
+ *
+ * Pipeline:
+ *   1. JxrDecApp -i input.jxr -o intermediate.tif
+ *      JxrDecApp (built from jxrlib source in the Dockerfile) decodes the raw
+ *      JXR bitstream and writes a standard TIFF file that ImageMagick can read.
+ *
+ *   2. magick intermediate.tif -flatten -strip PNG:output.png
+ *      -flatten  composites any alpha onto white background.
+ *      -strip    removes EXIF/ICC to keep the PNG browser-safe.
+ *
+ * Why not ffmpeg:
+ *   Alpine's ffmpeg package has --enable-libjxl (JPEG XL) but no JXR/HD-Photo
+ *   demuxer. Passing a .jxr file produces "Invalid data found" regardless of
+ *   the file extension used.
+ *
+ * Why not ImageMagick alone:
+ *   ImageMagick's JXR delegate calls JxrDecApp internally via delegates.xml,
+ *   but the Alpine imagemagick package ships with an incomplete delegates.xml
+ *   that omits the jxr entry, so magick never invokes the binary at all.
+ *   Calling JxrDecApp directly bypasses that lookup entirely.
+ */
 async function convertJxrToPng(jxrPath: string, pngOutPath: string): Promise<void> {
-  console.log(`[jxr] Pipeline: ffmpeg ${jxrPath} -> PNG:${pngOutPath}`);
+  const tifPath = jxrPath.replace(/\.tmp\.jxr$/, '.tmp.tif');
+
+  console.log(`[jxr] Step 1: JxrDecApp ${jxrPath} -> ${tifPath}`);
   console.log(`[jxr] Input size: ${existsSync(jxrPath) ? statSync(jxrPath).size : 'MISSING'} bytes`);
 
   try {
-    const r = await execFileAsync('ffmpeg', [
-      '-y',
+    const r1 = await execFileAsync('JxrDecApp', [
       '-i', jxrPath,
-      '-vf', 'scale=iw:ih',
-      pngOutPath,
+      '-o', tifPath,
     ], { timeout: 120_000 });
-    console.log(`[jxr] ffmpeg stdout: ${r.stdout}`);
-    console.log(`[jxr] ffmpeg stderr: ${r.stderr}`);
+    console.log(`[jxr] JxrDecApp stdout: ${r1.stdout}`);
+    console.log(`[jxr] JxrDecApp stderr: ${r1.stderr}`);
   } catch (e: any) {
-    console.error(`[jxr] ffmpeg FAILED`);
+    console.error(`[jxr] JxrDecApp FAILED`);
     console.error(`[jxr]   code:    ${e.code}`);
     console.error(`[jxr]   signal:  ${e.signal}`);
     console.error(`[jxr]   stdout:  ${e.stdout}`);
     console.error(`[jxr]   stderr:  ${e.stderr}`);
     console.error(`[jxr]   message: ${e.message}`);
     throw e;
+  }
+
+  if (!existsSync(tifPath) || statSync(tifPath).size < MIN_VALID_BYTES) {
+    throw new Error(`JxrDecApp produced no valid TIFF output at ${tifPath}`);
+  }
+  console.log(`[jxr] Step 1 OK: TIFF size = ${statSync(tifPath).size} bytes`);
+
+  console.log(`[jxr] Step 2: magick ${tifPath} -> PNG:${pngOutPath}`);
+  try {
+    const r2 = await execFileAsync('magick', [
+      tifPath,
+      '-flatten',
+      '-strip',
+      `PNG:${pngOutPath}`,
+    ], { timeout: 120_000 });
+    console.log(`[jxr] magick stdout: ${r2.stdout}`);
+    console.log(`[jxr] magick stderr: ${r2.stderr}`);
+  } catch (e: any) {
+    console.error(`[jxr] magick FAILED`);
+    console.error(`[jxr]   code:    ${e.code}`);
+    console.error(`[jxr]   signal:  ${e.signal}`);
+    console.error(`[jxr]   stdout:  ${e.stdout}`);
+    console.error(`[jxr]   stderr:  ${e.stderr}`);
+    console.error(`[jxr]   message: ${e.message}`);
+    throw e;
+  } finally {
+    // Always clean up the intermediate TIFF regardless of magick outcome
+    await unlink(tifPath).catch(() => {});
   }
 }
 
@@ -129,7 +180,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         await convertJxrToPng(jxrPath, outPath);
 
         if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES) {
-          throw new Error('ffmpeg produced no valid PNG output');
+          throw new Error('Pipeline produced no valid PNG output');
         }
         console.log(`[upload] JXR->PNG success: ${statSync(outPath).size} bytes`);
       } catch (err: any) {
