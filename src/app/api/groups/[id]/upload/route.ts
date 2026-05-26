@@ -52,40 +52,69 @@ async function convertToMp4(tmpPath: string, outPath: string): Promise<void> {
 }
 
 /**
- * Convert JXR -> PNG using ImageMagick 7 (magick).
+ * Convert JXR -> PNG
  *
- * Why magick and not JxrDecApp:
- *   - jxrlib (2013) does not support the modern HD Photo / tiled-container JXR
- *     variant that Windows/Xbox saves for HDR screenshots. It exits with
- *     "Unsupported format in JPEG XR" on these files.
- *   - ImageMagick 7.1.2+ has a working JXR delegate in delegates.xml that uses
- *     JxrDecApp for the classic format AND falls back via its own decoder for
- *     the extended format. The container uses /bin/mv which IS present on Alpine.
- *   - We prefix the input path with 'JXR:' to force IM to treat it as JXR
- *     regardless of extension sniffing, and we add -flatten to handle alpha.
+ * Full diagnosis of why previous approaches failed:
+ *  - jxrlib (JxrDecApp) exits "Unsupported format" on modern HDR tiled JXR.
+ *    WRONG: actually it DOES run (exit code 150 is a recoverable decode warning),
+ *    but it outputs a .pnm — and our earlier test used a fake file.
+ *    RE-DIAGNOSIS from latest logs:
+ *  - magick JXR:file -> PNG fails with "no decode delegate for TIFF".
+ *    The JXR delegate in delegates.xml calls JxrDecApp with -o file.tiff,
+ *    then tries to read that TIFF back — but Alpine's ImageMagick has no libtiff.
+ *
+ * CORRECT FIX:
+ *  Call JxrDecApp directly with -o file.bmp and -c 0 (force 24bppBGR).
+ *  BMP output is always supported by JxrDecApp (<=8bpc).
+ *  Then use magick to convert BMP -> PNG. BMP is a built-in IM format, no delegate.
+ *
+ *  The HDR color depth gets tone-mapped to 8bpc by -c 0 which is fine for display.
  */
 async function convertJxrToPng(jxrPath: string, pngOutPath: string): Promise<void> {
-  console.log(`[jxr] magick conversion: ${jxrPath} -> ${pngOutPath}`);
-  console.log(`[jxr] Input size: ${existsSync(jxrPath) ? statSync(jxrPath).size : 'MISSING'} bytes`);
+  const bmpPath = pngOutPath.replace(/\.png$/, '.tmp.bmp');
+
+  console.log(`[jxr] Pipeline: JxrDecApp(jxr->bmp) then magick(bmp->png)`);
+  console.log(`[jxr] Input: ${jxrPath} (${existsSync(jxrPath) ? statSync(jxrPath).size : 'MISSING'} bytes)`);
+  console.log(`[jxr] BMP intermediate: ${bmpPath}`);
 
   try {
-    const result = await execFileAsync('magick', [
-      `JXR:${jxrPath}`,  // force JXR decoder regardless of file extension
-      '-flatten',         // composite alpha onto white background
-      '-strip',           // drop EXIF/color profiles that can confuse browsers
-      `PNG:${pngOutPath}`,
-    ], { timeout: 120_000 });
+    // Step 1: JxrDecApp -c 0 forces 24bppBGR output -> .bmp (always works, no libtiff needed)
+    try {
+      const r = await execFileAsync('/usr/local/bin/JxrDecApp', [
+        '-i', jxrPath,
+        '-o', bmpPath,
+        '-c', '0',   // 24bppBGR — the only format guaranteed to produce a BMP JxrDecApp can write
+      ], { timeout: 120_000 });
+      console.log(`[jxr] JxrDecApp stdout: ${r.stdout}`);
+      console.log(`[jxr] JxrDecApp stderr: ${r.stderr}`);
+    } catch (e: any) {
+      console.error(`[jxr] JxrDecApp FAILED code=${e.code} stdout=${e.stdout} stderr=${e.stderr}`);
+      throw e;
+    }
 
-    console.log(`[jxr] magick stdout: ${result.stdout}`);
-    console.log(`[jxr] magick stderr: ${result.stderr}`);
-  } catch (err: any) {
-    console.error(`[jxr] magick FAILED`);
-    console.error(`[jxr]   code:    ${err.code}`);
-    console.error(`[jxr]   signal:  ${err.signal}`);
-    console.error(`[jxr]   stdout:  ${err.stdout}`);
-    console.error(`[jxr]   stderr:  ${err.stderr}`);
-    console.error(`[jxr]   message: ${err.message}`);
-    throw err;
+    if (!existsSync(bmpPath) || statSync(bmpPath).size < MIN_VALID_BYTES) {
+      throw new Error(`JxrDecApp produced no valid BMP (size=${existsSync(bmpPath) ? statSync(bmpPath).size : 0})`);
+    }
+    console.log(`[jxr] BMP produced: ${statSync(bmpPath).size} bytes`);
+
+    // Step 2: magick BMP -> PNG (BMP is a built-in IM format, zero delegates required)
+    try {
+      const r = await execFileAsync('magick', [
+        bmpPath,
+        '-strip',
+        pngOutPath,
+      ], { timeout: 60_000 });
+      console.log(`[jxr] magick stdout: ${r.stdout}`);
+      console.log(`[jxr] magick stderr: ${r.stderr}`);
+    } catch (e: any) {
+      console.error(`[jxr] magick BMP->PNG FAILED code=${e.code} stdout=${e.stdout} stderr=${e.stderr}`);
+      throw e;
+    }
+
+    const pngSize = existsSync(pngOutPath) ? statSync(pngOutPath).size : 0;
+    console.log(`[jxr] PNG produced: ${pngSize} bytes`);
+  } finally {
+    if (existsSync(bmpPath)) unlink(bmpPath).catch(() => {});
   }
 }
 
@@ -130,7 +159,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (isImage) {
     if (isJxrFile(file)) {
-      // Save with .jxr extension so ImageMagick's delegate recognises it
       const jxrFilename = `${id}.tmp.jxr`;
       const jxrPath = join(uploadDir, jxrFilename);
       const outFilename = `${id}.png`;
@@ -144,10 +172,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         await convertJxrToPng(jxrPath, outPath);
 
         if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES) {
-          throw new Error('magick produced no valid PNG output');
+          throw new Error('Pipeline produced no valid PNG');
         }
-
-        console.log(`[upload] JXR->PNG success: ${outPath} (${statSync(outPath).size} bytes)`);
+        console.log(`[upload] JXR->PNG success: ${statSync(outPath).size} bytes`);
       } catch (err: any) {
         await unlink(jxrPath).catch(() => {});
         console.error(`[upload] JXR conversion failed: ${err.message}`);
