@@ -52,43 +52,62 @@ async function convertToMp4(tmpPath: string, outPath: string): Promise<void> {
 }
 
 /**
- * Convert JXR -> PNG using ffmpeg.
+ * Convert a Windows/Xbox JXR screenshot to PNG.
  *
- * Why ffmpeg instead of JxrDecApp / ImageMagick:
- *   - jxrlib (JxrDecApp) cannot decode the HD Photo "Extended" / tiled JXR
- *     container used by Windows 11 / Xbox HDR screenshots. It exits with
- *     code 150 "Unsupported format in JPEG XR" regardless of output format.
- *   - ImageMagick's JXR delegate also calls JxrDecApp internally (same failure),
- *     and Alpine's imagemagick package has no libtiff, making the TIFF
- *     intermediate path fail as well.
- *   - ffmpeg ships with a full, modern JXR decoder (via its internal xwddec
- *     and jxr demuxer) and is already installed in the container for video.
+ * Why this approach:
+ *
+ *   The Xbox Game Bar / Windows 11 HDR screenshot format is a TIFF container
+ *   that stores JXR-compressed pixel data. The on-disk file has a standard
+ *   TIFF header (magic bytes II 0x2A 0x00 or MM 0x00 0x2A), not a bare JXR
+ *   bitstream.
+ *
+ *   - JxrDecApp (jxrlib, 2013) cannot decode this tiled/extended JXR variant;
+ *     exits with code 150 "Unsupported format in JPEG XR".
+ *
+ *   - ImageMagick's `jxr` delegate in delegates.xml calls JxrDecApp internally
+ *     and therefore fails the same way.
+ *
+ *   - ffmpeg's Alpine package is built with --enable-libjxl (JPEG XL, .jxl),
+ *     which is a completely different format. ffmpeg has no JXR/HD-Photo
+ *     demuxer; "Invalid data found" is expected.
+ *
+ *   - ImageMagick in this container has native TIFF support compiled in
+ *     ("Delegates (built-in): ... tiff ..."). If we tell magick the file is
+ *     TIFF it reads the container directly without invoking JxrDecApp at all.
  *
  * Pipeline:
- *   ffmpeg -i file.jxr -vf scale=iw:ih -pix_fmt rgb24 -frames:v 1 file.png
+ *   1. Write the .jxr bytes to a temp file named .tmp.tif
+ *      (the extension is what triggers the TIFF codec path in magick)
+ *   2. magick TIFF:file.tmp.tif -flatten -strip PNG:output.png
+ *      -flatten  : composites alpha onto white background
+ *      -strip    : removes EXIF/ICC to keep the PNG browser-safe
  *
- *   -pix_fmt rgb24   : tone-maps HDR float/half-float pixel formats to 8bpc
- *   -frames:v 1      : output exactly one frame (JXR is treated as single-frame video)
- *   -vf scale=iw:ih  : forces pixel format conversion through the scale filter
- *                      which handles wide-gamut / HDR -> sRGB correctly
+ * If the file truly is not a TIFF-wrapped JXR (e.g. a bare JXR bitstream),
+ * this call will fail and the error is surfaced to the caller cleanly.
  */
 async function convertJxrToPng(jxrPath: string, pngOutPath: string): Promise<void> {
-  console.log(`[jxr] ffmpeg JXR->PNG: ${jxrPath} -> ${pngOutPath}`);
-  console.log(`[jxr] Input size: ${existsSync(jxrPath) ? statSync(jxrPath).size : 'MISSING'} bytes`);
+  // Write to a .tif extension so magick uses TIFF codec, not the JXR delegate
+  const tifPath = jxrPath.replace(/\.tmp\.jxr$/, '.tmp.tif');
+
+  const { rename } = await import('fs/promises');
+  await rename(jxrPath, tifPath);
+
+  console.log(`[jxr] Pipeline: magick TIFF:${tifPath} -> PNG:${pngOutPath}`);
+  console.log(`[jxr] Input size: ${existsSync(tifPath) ? statSync(tifPath).size : 'MISSING'} bytes`);
 
   try {
-    const r = await execFileAsync('ffmpeg', [
-      '-y',
-      '-i', jxrPath,
-      '-vf', 'scale=iw:ih',
-      '-pix_fmt', 'rgb24',
-      '-frames:v', '1',
-      pngOutPath,
+    const r = await execFileAsync('magick', [
+      `TIFF:${tifPath}`,
+      '-flatten',
+      '-strip',
+      `PNG:${pngOutPath}`,
     ], { timeout: 120_000 });
-    console.log(`[jxr] ffmpeg stdout: ${r.stdout}`);
-    console.log(`[jxr] ffmpeg stderr: ${r.stderr}`);
+    console.log(`[jxr] magick stdout: ${r.stdout}`);
+    console.log(`[jxr] magick stderr: ${r.stderr}`);
   } catch (e: any) {
-    console.error(`[jxr] ffmpeg FAILED`);
+    // Rename back so cleanup code can still unlink by the original path variable
+    await rename(tifPath, jxrPath).catch(() => {});
+    console.error(`[jxr] magick FAILED`);
     console.error(`[jxr]   code:    ${e.code}`);
     console.error(`[jxr]   signal:  ${e.signal}`);
     console.error(`[jxr]   stdout:  ${e.stdout}`);
@@ -96,6 +115,9 @@ async function convertJxrToPng(jxrPath: string, pngOutPath: string): Promise<voi
     console.error(`[jxr]   message: ${e.message}`);
     throw e;
   }
+
+  // Cleanup the renamed temp file
+  await unlink(tifPath).catch(() => {});
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -139,8 +161,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (isImage) {
     if (isJxrFile(file)) {
-      // ffmpeg sniffs the JXR format from file headers, extension doesn't matter,
-      // but keeping .jxr is fine and consistent.
       const jxrFilename = `${id}.tmp.jxr`;
       const jxrPath = join(uploadDir, jxrFilename);
       const outFilename = `${id}.png`;
@@ -154,11 +174,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         await convertJxrToPng(jxrPath, outPath);
 
         if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES) {
-          throw new Error('ffmpeg produced no valid PNG output');
+          throw new Error('magick produced no valid PNG output');
         }
         console.log(`[upload] JXR->PNG success: ${statSync(outPath).size} bytes`);
       } catch (err: any) {
+        // jxrPath may have been renamed to .tif inside convertJxrToPng on failure;
+        // attempt cleanup of both possible names
+        const tifPath = jxrPath.replace(/\.tmp\.jxr$/, '.tmp.tif');
         await unlink(jxrPath).catch(() => {});
+        await unlink(tifPath).catch(() => {});
         console.error(`[upload] JXR conversion failed: ${err.message}`);
         return NextResponse.json(
           { error: 'Could not convert JXR image. Check server logs for details.' },
@@ -166,7 +190,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         );
       }
 
-      await unlink(jxrPath).catch(() => {});
+      // jxrPath was renamed to .tif and already cleaned up inside convertJxrToPng
+      // (or renamed back and cleaned up in the catch above). Nothing to do here.
 
       const post = await prisma.post.create({
         data: {
