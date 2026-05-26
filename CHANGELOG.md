@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.91 — May 26, 2026
+
+### Share Links
+- Images and videos shared via a Dropzone link now embed properly in Discord and iMessage
+- Previously, shared images and videos would show a blank or broken preview when pasted into Discord or iMessage — this is now fixed
+- All existing share links are fixed automatically — no need to re-share anything
+- **Note:** If you already pasted a link into Discord before today, you may need to re-paste it to see the updated preview (Discord caches old previews)
+
+### Image Uploads
+- Fixed Windows HDR screenshots (.jxr files) failing to upload — these now convert correctly
+
+---
+
 ## v0.90 — May 24, 2026
 
 ### Notifications

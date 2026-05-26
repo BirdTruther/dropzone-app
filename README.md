@@ -9,14 +9,15 @@ A private group link-sharing web app. Share links, videos, and images with frien
 - **NextAuth.js** (credentials auth)
 - **open-graph-scraper** (link previews)
 - **web-push** (push notifications via VAPID)
-- **yt-dlp + ffmpeg** (Facebook video downloads)
+- **yt-dlp + ffmpeg** (Facebook video downloads + JPEG XR image conversion)
 - **Docker Compose** (app + database)
 
 ## Features
 - 🔗 Link sharing with rich OG previews
 - 🎥 Video & image uploads (100MB max per file, 20GB total)
+- 🖼️ JPEG XR support — Windows HDR screenshots (.jxr) are automatically converted to PNG on upload via ffmpeg
 - ♾️ Uploads kept indefinitely — no expiry
-- 🔗 Share links — generate a public preview URL for any post that embeds in Discord
+- 🔗 Share links — generate a public preview URL for any post that embeds in Discord and iMessage
 - ❤️ Emoji reactions on posts
 - 💬 Comments on posts — threaded discussion per drop with delete support
 - 👥 Private invite-only groups
@@ -113,6 +114,37 @@ Dropzone downloads and serves Facebook videos natively using `yt-dlp` and `ffmpe
 
 > ⚠️ Only **fully public** Facebook videos can be downloaded. Videos behind a login wall, set to Friends Only, or from private groups will fail with an explanatory message.
 
+## JPEG XR / Windows HDR Screenshots
+
+Windows saves HDR screenshots as `.jxr` (JPEG XR) files. Most image processing tools cannot handle this format natively, but Dropzone converts them automatically on upload.
+
+- `.jxr` files are detected by their file extension on upload
+- `ffmpeg` (already installed in the container for Facebook video support) converts them to PNG via:
+  ```
+  ffmpeg -i input.jxr -vf scale=iw:ih output.png
+  ```
+- The converted PNG is stored and served like any other uploaded image — the original `.jxr` is discarded
+- No additional dependencies required — ffmpeg's native JPEG XR decoder handles it
+- Conversion logic lives in `src/lib/convertJxr.ts`
+
+> ⚠️ Do **not** use ImageMagick for `.jxr` conversion. ImageMagick's TIFF decoder rejects JXR files (magic bytes `0x1bc` are misread as a bad TIFF version), causing a fatal `bad version number 444` error. ffmpeg is the correct tool.
+
+## Share Links & Discord / iMessage Embeds
+
+Share links generate a public, token-gated preview URL for any post. The share token acts as the sole authentication — no login is required to view or embed the preview.
+
+### How embeds work
+- `generateMetadata` in `src/app/share/[token]/page.tsx` produces `og:image` and `og:video` tags pointing to the **public media proxy** at `/api/share/[token]/media`
+- The media proxy (`src/app/api/share/[token]/media/route.ts`) validates the share token and streams the file with `Cache-Control: public, max-age=86400` — no session cookie required
+- This allows Discord's unfurler and iMessage's scraper (both unauthenticated bots) to fetch the image/video directly
+- Facebook videos use the existing `/api/share/[token]/video` proxy (same pattern)
+
+### Why `/api/uploads/` is NOT used in OG tags
+The main uploads route (`src/app/api/uploads/[filename]/route.ts`) requires an active session and returns `Cache-Control: private`. Bots have no session, so they receive a `401 Unauthorized` and the embed is blank. OG tag URLs must always point to the public share proxy, never the private uploads route.
+
+### Discord cache busting
+Discord caches embed previews per URL. If a link was pasted before a fix was deployed, the old (broken) preview may be cached. Re-pasting the URL forces a fresh scrape. Appending a query param (e.g. `?v=2`) also busts the cache since Discord treats it as a new URL.
+
 ## Storage & Uploads
 
 All user-uploaded files and downloaded Facebook videos are stored in the `./uploads/` directory on the host machine.
@@ -168,10 +200,13 @@ src/
         comments/[commentId]/   # DELETE a comment
       push/subscribe/           # Save / remove push subscriptions
       fetch-facebook/           # yt-dlp download + ffprobe validation endpoint
-      uploads/[filename]/       # Serve uploaded files
+      uploads/[filename]/       # Serve uploaded files (auth-gated, session required)
       storage/                  # GET storage usage stats
       notifications/            # GET + PATCH notifications (read state)
-    share/[token]/              # Public share preview page
+      share/[token]/
+        media/                  # Public token-gated proxy for uploaded images/videos (no session needed — used in OG tags)
+        video/                  # Public token-gated proxy for Facebook-downloaded videos
+    share/[token]/              # Public share preview page (generateMetadata produces OG/Twitter cards)
     forgot-password/            # Lockout help page
   components/
     CommentThread.tsx           # Collapsible comment thread component
@@ -180,6 +215,7 @@ src/
     PushNotificationToggle.tsx  # Enable/disable push per device
     UploadedVideo.tsx           # Video upload progress + playback component
   lib/
+    convertJxr.ts       # JPEG XR → PNG conversion via ffmpeg (for Windows HDR screenshots)
     embed.ts            # URL → embed type detection
     timeAgo.ts          # Relative timestamp utility (timeAgo, isoDate, fullDate)
     notifications.ts    # createNotification() — saves to DB + fires push
