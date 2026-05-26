@@ -52,68 +52,40 @@ async function convertToMp4(tmpPath: string, outPath: string): Promise<void> {
 }
 
 /**
- * Convert JXR → PNG by calling JxrDecApp directly (bypasses ImageMagick delegates entirely).
+ * Convert JXR -> PNG using ImageMagick 7 (magick).
  *
- * Pipeline: .jxr → JxrDecApp → .pnm → convert → .png
- *
- * PNM needs no ImageMagick delegate, so step 2 is always safe.
+ * Why magick and not JxrDecApp:
+ *   - jxrlib (2013) does not support the modern HD Photo / tiled-container JXR
+ *     variant that Windows/Xbox saves for HDR screenshots. It exits with
+ *     "Unsupported format in JPEG XR" on these files.
+ *   - ImageMagick 7.1.2+ has a working JXR delegate in delegates.xml that uses
+ *     JxrDecApp for the classic format AND falls back via its own decoder for
+ *     the extended format. The container uses /bin/mv which IS present on Alpine.
+ *   - We prefix the input path with 'JXR:' to force IM to treat it as JXR
+ *     regardless of extension sniffing, and we add -flatten to handle alpha.
  */
 async function convertJxrToPng(jxrPath: string, pngOutPath: string): Promise<void> {
-  const pnmPath = pngOutPath.replace(/\.png$/, '.tmp.pnm');
-
-  console.log(`[jxr] Starting conversion: ${jxrPath} -> ${pngOutPath}`);
-  console.log(`[jxr] Intermediate PNM: ${pnmPath}`);
-  console.log(`[jxr] JxrDecApp exists: ${existsSync('/usr/local/bin/JxrDecApp')}`);
-  console.log(`[jxr] Input file size: ${existsSync(jxrPath) ? statSync(jxrPath).size : 'MISSING'}`);
+  console.log(`[jxr] magick conversion: ${jxrPath} -> ${pngOutPath}`);
+  console.log(`[jxr] Input size: ${existsSync(jxrPath) ? statSync(jxrPath).size : 'MISSING'} bytes`);
 
   try {
-    // Step 1: JxrDecApp decodes .jxr -> .pnm
-    let decodeResult: { stdout?: string; stderr?: string } = {};
-    try {
-      decodeResult = await execFileAsync('/usr/local/bin/JxrDecApp', [
-        '-i', jxrPath,
-        '-o', pnmPath,
-      ], { timeout: 60_000 });
-      console.log(`[jxr] JxrDecApp stdout: ${decodeResult.stdout}`);
-      console.log(`[jxr] JxrDecApp stderr: ${decodeResult.stderr}`);
-    } catch (decodeErr: any) {
-      console.error(`[jxr] JxrDecApp FAILED`);
-      console.error(`[jxr]   code:   ${decodeErr.code}`);
-      console.error(`[jxr]   signal: ${decodeErr.signal}`);
-      console.error(`[jxr]   stdout: ${decodeErr.stdout}`);
-      console.error(`[jxr]   stderr: ${decodeErr.stderr}`);
-      console.error(`[jxr]   message: ${decodeErr.message}`);
-      throw decodeErr;
-    }
+    const result = await execFileAsync('magick', [
+      `JXR:${jxrPath}`,  // force JXR decoder regardless of file extension
+      '-flatten',         // composite alpha onto white background
+      '-strip',           // drop EXIF/color profiles that can confuse browsers
+      `PNG:${pngOutPath}`,
+    ], { timeout: 120_000 });
 
-    const pnmExists = existsSync(pnmPath);
-    const pnmSize = pnmExists ? statSync(pnmPath).size : 0;
-    console.log(`[jxr] PNM exists: ${pnmExists}, size: ${pnmSize}`);
-
-    if (!pnmExists || pnmSize < MIN_VALID_BYTES) {
-      throw new Error(`JxrDecApp produced no valid .pnm (exists=${pnmExists}, size=${pnmSize})`);
-    }
-
-    // Step 2: convert .pnm -> .png (PNM is natively supported, no delegate)
-    try {
-      const convertResult = await execFileAsync('convert', [pnmPath, pngOutPath], { timeout: 60_000 });
-      console.log(`[jxr] convert stdout: ${convertResult.stdout}`);
-      console.log(`[jxr] convert stderr: ${convertResult.stderr}`);
-    } catch (convertErr: any) {
-      console.error(`[jxr] convert (PNM->PNG) FAILED`);
-      console.error(`[jxr]   code:   ${convertErr.code}`);
-      console.error(`[jxr]   stdout: ${convertErr.stdout}`);
-      console.error(`[jxr]   stderr: ${convertErr.stderr}`);
-      console.error(`[jxr]   message: ${convertErr.message}`);
-      throw convertErr;
-    }
-
-    const pngExists = existsSync(pngOutPath);
-    const pngSize = pngExists ? statSync(pngOutPath).size : 0;
-    console.log(`[jxr] PNG exists: ${pngExists}, size: ${pngSize}`);
-
-  } finally {
-    if (existsSync(pnmPath)) unlink(pnmPath).catch(() => {});
+    console.log(`[jxr] magick stdout: ${result.stdout}`);
+    console.log(`[jxr] magick stderr: ${result.stderr}`);
+  } catch (err: any) {
+    console.error(`[jxr] magick FAILED`);
+    console.error(`[jxr]   code:    ${err.code}`);
+    console.error(`[jxr]   signal:  ${err.signal}`);
+    console.error(`[jxr]   stdout:  ${err.stdout}`);
+    console.error(`[jxr]   stderr:  ${err.stderr}`);
+    console.error(`[jxr]   message: ${err.message}`);
+    throw err;
   }
 }
 
@@ -158,7 +130,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (isImage) {
     if (isJxrFile(file)) {
-      // JXR path — must have .jxr extension or JxrDecApp refuses to read it
+      // Save with .jxr extension so ImageMagick's delegate recognises it
       const jxrFilename = `${id}.tmp.jxr`;
       const jxrPath = join(uploadDir, jxrFilename);
       const outFilename = `${id}.png`;
@@ -166,19 +138,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
       const buffer = Buffer.from(await file.arrayBuffer());
       await writeFile(jxrPath, buffer);
-      console.log(`[upload] JXR written to ${jxrPath} (${buffer.length} bytes)`);
+      console.log(`[upload] JXR written: ${jxrPath} (${buffer.length} bytes)`);
 
       try {
         await convertJxrToPng(jxrPath, outPath);
 
         if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES) {
-          throw new Error('JXR conversion produced no valid PNG');
+          throw new Error('magick produced no valid PNG output');
         }
 
         console.log(`[upload] JXR->PNG success: ${outPath} (${statSync(outPath).size} bytes)`);
       } catch (err: any) {
         await unlink(jxrPath).catch(() => {});
-        console.error(`[upload] JXR conversion pipeline error: ${err.message}`);
+        console.error(`[upload] JXR conversion failed: ${err.message}`);
         return NextResponse.json(
           { error: 'Could not convert JXR image. Check server logs for details.' },
           { status: 422 },
