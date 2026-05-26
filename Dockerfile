@@ -11,13 +11,15 @@ COPY . .
 RUN npx prisma generate && npm run build
 
 # Build JxrDecApp/JxrEncApp from jxrlib source so ImageMagick can decode JXR files.
-# Must cd into the repo root before make — the Makefile uses relative include paths.
-# CFLAGS+=... appends our flags without replacing the Makefile's own -I include paths.
+# The Makefile defines CFLAGS with = (not ?=), so command-line CFLAGS overrides it
+# entirely. We must supply the full original CFLAGS plus -fpermissive so GCC 15
+# doesn't reject the C89-era implicit pointer casts as hard errors.
 FROM node:20-alpine AS jxrlib
 RUN apk add --no-cache git gcc g++ make musl-dev \
   && git clone --depth 1 https://github.com/4creators/jxrlib.git /jxrlib \
   && cd /jxrlib \
-  && make -j$(nproc) "CFLAGS+=-fpermissive -w" \
+  && make -j$(nproc) \
+       CFLAGS="-I. -Icommon/include -Iimage/sys -D__ANSI__ -DDISABLE_PERF_MEASUREMENT -w -O -fpermissive" \
   && cp /jxrlib/JxrDecApp/JxrDecApp /usr/local/bin/JxrDecApp \
   && cp /jxrlib/JxrEncApp/JxrEncApp /usr/local/bin/JxrEncApp \
   && chmod +x /usr/local/bin/JxrDecApp /usr/local/bin/JxrEncApp
