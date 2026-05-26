@@ -10,14 +10,17 @@ COPY . .
 # Regenerate Prisma client from schema before building
 RUN npx prisma generate && npm run build
 
-# Build JxrDecApp/JxrEncApp from jxrlib source so ImageMagick can decode JXR files
+# Build JxrDecApp/JxrEncApp from jxrlib source so ImageMagick can decode JXR files.
+# -fpermissive is required because jxrlib uses C89-era implicit pointer casts
+# that GCC 15 rejects as errors by default.
 FROM node:20-alpine AS jxrlib
 RUN apk add --no-cache git gcc g++ make musl-dev \
   && git clone --depth 1 https://github.com/4creators/jxrlib.git /jxrlib \
   && cd /jxrlib \
-  && make -j$(nproc) \
-  && cp JxrDecApp/JxrDecApp /usr/local/bin/JxrDecApp \
-  && cp JxrEncApp/JxrEncApp /usr/local/bin/JxrEncApp
+  && make -j$(nproc) CFLAGS="-D__ANSI__ -DDISABLE_PERF_MEASUREMENT -w -O -fpermissive" \
+  && cp /jxrlib/JxrDecApp/JxrDecApp /usr/local/bin/JxrDecApp \
+  && cp /jxrlib/JxrEncApp/JxrEncApp /usr/local/bin/JxrEncApp \
+  && chmod +x /usr/local/bin/JxrDecApp /usr/local/bin/JxrEncApp
 
 FROM node:20-alpine AS runner
 WORKDIR /app
