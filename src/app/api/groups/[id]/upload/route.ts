@@ -54,19 +54,13 @@ async function convertToMp4(tmpPath: string, outPath: string): Promise<void> {
     '-b:a', '128k',
     '-movflags', '+faststart',
     outPath,
-  ], { timeout: 600_000 }); // 10 min max for large videos
+  ], { timeout: 600_000 });
 }
 
 async function convertJxrToPng(tmpPath: string, outPath: string): Promise<void> {
-  // ffmpeg has a native JXR decoder (ljpegb). Force image2 demuxer so it
-  // treats the file as a single still frame rather than a video stream.
-  await execFileAsync('ffmpeg', [
-    '-y',
-    '-f', 'image2',
-    '-i', tmpPath,
-    '-vframes', '1',
-    outPath,
-  ], { timeout: 60_000 });
+  // ImageMagick v7 `magick` delegates JXR decoding to JxrDecApp (built from
+  // jxrlib source and installed at /usr/local/bin in the Dockerfile).
+  await execFileAsync('magick', [tmpPath, outPath], { timeout: 60_000 });
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -105,7 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (isImage) {
     if (isJxrFile(file)) {
-      // JXR: write temp file, convert to PNG via ffmpeg's native JXR decoder, clean up temp
+      // JXR: write temp .jxr, convert to PNG via ImageMagick + JxrDecApp, clean up temp
       const tmpFilename = `${id}.tmp.jxr`;
       const tmpPath = join(uploadDir, tmpFilename);
       const outFilename = `${id}.png`;
@@ -195,7 +189,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     try {
       await convertToMp4(tmpPath, outPath);
 
-      // Validate output
       if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES) {
         throw new Error('Output file missing or too small after conversion');
       }
@@ -211,11 +204,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         data: { uploadStatus: 'error' },
       }).catch(() => {});
     } finally {
-      // Always clean up the tmp file
-      if (existsSync(tmpPath)) {
-        unlink(tmpPath).catch(() => {});
-      }
-      // If conversion failed, also remove the incomplete output
+      if (existsSync(tmpPath)) unlink(tmpPath).catch(() => {});
       if (existsSync(outPath)) {
         const { size } = statSync(outPath);
         if (size < MIN_VALID_BYTES) unlink(outPath).catch(() => {});
