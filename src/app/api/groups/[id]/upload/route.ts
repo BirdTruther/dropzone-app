@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { writeFile, mkdir, unlink } from 'fs/promises';
+import { writeFile, mkdir, unlink, rename } from 'fs/promises';
 import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
@@ -30,7 +30,6 @@ const ALLOWED_IMAGE = [
   'image/vnd.ms-photo',    // alternate MIME for JXR
 ];
 
-// Extensions that require server-side conversion to PNG before serving
 const JXR_EXTENSIONS = ['.jxr'];
 const JXR_MIMES = new Set(['image/jxr', 'image/vnd.ms-photo']);
 
@@ -57,11 +56,44 @@ async function convertToMp4(tmpPath: string, outPath: string): Promise<void> {
   ], { timeout: 600_000 });
 }
 
-async function convertJxrToPng(tmpPath: string, outPath: string): Promise<void> {
-  // Alpine's imagemagick package is v6 — the binary is `convert`, not `magick`.
-  // JxrDecApp (built from jxrlib and installed at /usr/local/bin) is the
-  // ImageMagick delegate that does the actual JXR decoding.
-  await execFileAsync('convert', [tmpPath, outPath], { timeout: 60_000 });
+/**
+ * Convert a JXR file to PNG without touching ImageMagick at all.
+ *
+ * Why bypass ImageMagick:
+ *   - Alpine's packaged ImageMagick v6 delegates.xml uses hard-coded /usr/bin/mv
+ *     which doesn't exist on Alpine (it lives at /bin/mv), so the JXR delegate
+ *     shell command fails silently before JxrDecApp ever runs.
+ *   - Even if the path were correct, the Alpine build of ImageMagick is unlikely
+ *     to have a JXR delegate entry at all.
+ *
+ * Pipeline:
+ *   1. JxrDecApp reads the .jxr and writes a .pnm (portable anymap) file.
+ *      JxrDecApp requires the input file extension to literally be .jxr —
+ *      we already saved the upload as <id>.tmp.jxr so that is satisfied.
+ *   2. ImageMagick `convert` turns the .pnm into a .png.
+ *      PNM is a trivially-supported format that needs no delegates at all.
+ */
+async function convertJxrToPng(jxrPath: string, pngOutPath: string): Promise<void> {
+  const pnmPath = pngOutPath.replace(/\.png$/, '.tmp.pnm');
+
+  try {
+    // Step 1 — JxrDecApp: .jxr → .pnm
+    // -i  input file  (must end in .jxr)
+    // -o  output file (JxrDecApp names it <base>.pnm automatically)
+    await execFileAsync('/usr/local/bin/JxrDecApp', [
+      '-i', jxrPath,
+      '-o', pnmPath,
+    ], { timeout: 60_000 });
+
+    if (!existsSync(pnmPath) || statSync(pnmPath).size < MIN_VALID_BYTES) {
+      throw new Error('JxrDecApp produced no .pnm output');
+    }
+
+    // Step 2 — ImageMagick convert: .pnm → .png  (no delegate needed for PNM)
+    await execFileAsync('convert', [pnmPath, pngOutPath], { timeout: 60_000 });
+  } finally {
+    if (existsSync(pnmPath)) unlink(pnmPath).catch(() => {});
+  }
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -84,7 +116,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'File too large (max 100MB)' }, { status: 400 });
 
   const isVideo = ALLOWED_VIDEO.includes(file.type);
-  // Check image by MIME first; fall back to extension for JXR since Windows may send application/octet-stream
   const isImage = ALLOWED_IMAGE.includes(file.type) || isJxrFile(file);
   if (!isVideo && !isImage) return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
 
@@ -100,28 +131,31 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (isImage) {
     if (isJxrFile(file)) {
-      // JXR: write temp .jxr, convert to PNG via ImageMagick + JxrDecApp, clean up temp
-      const tmpFilename = `${id}.tmp.jxr`;
-      const tmpPath = join(uploadDir, tmpFilename);
+      // Write with a .jxr extension — JxrDecApp requires the extension to be .jxr
+      const jxrFilename = `${id}.tmp.jxr`;
+      const jxrPath = join(uploadDir, jxrFilename);
       const outFilename = `${id}.png`;
       const outPath = join(uploadDir, outFilename);
 
       const buffer = Buffer.from(await file.arrayBuffer());
-      await writeFile(tmpPath, buffer);
+      await writeFile(jxrPath, buffer);
 
       try {
-        await convertJxrToPng(tmpPath, outPath);
+        await convertJxrToPng(jxrPath, outPath);
 
         if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES) {
-          throw new Error('JXR conversion produced no output');
+          throw new Error('JXR conversion produced no PNG output');
         }
       } catch (err) {
-        await unlink(tmpPath).catch(() => {});
+        await unlink(jxrPath).catch(() => {});
         console.error('[upload] JXR conversion failed:', err);
-        return NextResponse.json({ error: 'Could not convert JXR image. The file may be corrupt.' }, { status: 422 });
+        return NextResponse.json(
+          { error: 'Could not convert JXR image. The file may be corrupt.' },
+          { status: 422 },
+        );
       }
 
-      await unlink(tmpPath).catch(() => {});
+      await unlink(jxrPath).catch(() => {});
 
       const post = await prisma.post.create({
         data: {
@@ -138,7 +172,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json(post, { status: 201 });
     }
 
-    // Standard images: write directly, no conversion needed
+    // Standard images — write directly, no conversion needed
     const ext = file.name.split('.').pop() ?? 'jpg';
     const filename = `${id}.${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -160,7 +194,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   // ── Video path ──────────────────────────────────────────────────────────────
-  // 1. Write raw upload to a .tmp file immediately
   const tmpFilename = `${id}.tmp`;
   const tmpPath = join(uploadDir, tmpFilename);
   const outFilename = `${id}.mp4`;
@@ -169,7 +202,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(tmpPath, buffer);
 
-  // 2. Create post immediately with status 'processing' so it appears in feed
   const post = await prisma.post.create({
     data: {
       url: '',
@@ -183,8 +215,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     include: { author: { select: { id: true, name: true, avatar: true } }, reactions: true },
   });
 
-  // 3. Respond 201 immediately — client is unblocked
-  // Fire-and-forget background conversion
   const postId = post.id;
   setImmediate(async () => {
     try {
