@@ -14,14 +14,15 @@ RUN npx prisma generate && npm run build
 # The Makefile defines CFLAGS with = (not ?=), so command-line CFLAGS overrides it
 # entirely. We must supply the full original CFLAGS plus -fpermissive so GCC 15
 # doesn't reject the C89-era implicit pointer casts as hard errors.
+# Binaries are output to /jxrlib/build/ (not /jxrlib/JxrDecApp/ etc.)
 FROM node:20-alpine AS jxrlib
 RUN apk add --no-cache git gcc g++ make musl-dev \
   && git clone --depth 1 https://github.com/4creators/jxrlib.git /jxrlib \
   && cd /jxrlib \
   && make -j$(nproc) \
        CFLAGS="-I. -Icommon/include -Iimage/sys -D__ANSI__ -DDISABLE_PERF_MEASUREMENT -w -O -fpermissive" \
-  && cp /jxrlib/JxrDecApp/JxrDecApp /usr/local/bin/JxrDecApp \
-  && cp /jxrlib/JxrEncApp/JxrEncApp /usr/local/bin/JxrEncApp \
+  && cp /jxrlib/build/JxrDecApp /usr/local/bin/JxrDecApp \
+  && cp /jxrlib/build/JxrEncApp /usr/local/bin/JxrEncApp \
   && chmod +x /usr/local/bin/JxrDecApp /usr/local/bin/JxrEncApp
 
 FROM node:20-alpine AS runner
