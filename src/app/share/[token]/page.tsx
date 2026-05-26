@@ -42,11 +42,21 @@ export async function generateMetadata({ params }: { params: { token: string } }
   const isFbVideo = isFacebookUrl(post.url);
   const title = post.note ?? post.title ?? `${post.author.name} dropped something`;
   const description = post.description ?? `Shared via dropzone`;
-  const imageUrl = isImage ? `${BASE_URL}${post.uploadUrl}` : post.image ?? `${BASE_URL}/android-chrome-512x512.png`;
+
+  // All uploaded media goes through the public token-gated media proxy so that
+  // unauthenticated scrapers (Discord, iMessage) can fetch the URLs.
+  // The auth-gated /api/uploads/ route is intentionally NOT used here.
+  const mediaProxyUrl = `${BASE_URL}/api/share/${params.token}/media`;
+  const fbVideoProxyUrl = `${BASE_URL}/api/share/${params.token}/video`;
+
+  const imageUrl = isImage
+    ? mediaProxyUrl
+    : post.image ?? `${BASE_URL}/android-chrome-512x512.png`;
+
   const videoUrl = isUploadedVideo
-    ? `${BASE_URL}${post.uploadUrl}`
+    ? mediaProxyUrl
     : isFbVideo
-    ? `${BASE_URL}/api/share/${params.token}/video`
+    ? fbVideoProxyUrl
     : null;
 
   return {
@@ -84,8 +94,6 @@ export default async function SharePage({ params }: { params: { token: string } 
   if (!post) notFound();
 
   // Check session but NEVER redirect — the share preview page always renders.
-  // If the user is already logged in, the CTA goes straight to the group.
-  // If not, it goes to login with a callbackUrl.
   const session = await getServerSession(authOptions);
   const isLoggedIn = !!session;
 
@@ -101,11 +109,14 @@ export default async function SharePage({ params }: { params: { token: string } 
     fbVideoReady = existsSync(filePath);
   }
 
+  // Use the public media proxy for all uploaded media in the page UI too,
+  // so the <video>/<img> tags work for unauthenticated share page visitors.
+  const mediaProxyUrl = `/api/share/${params.token}/media`;
   const fbVideoUrl = isFbVideo ? `/api/share/${params.token}/video` : null;
+
   const groupUrl = `/groups/${post.groupId}`;
   const callbackUrl = encodeURIComponent(groupUrl);
 
-  // CTA destination: go straight to the group if logged in, otherwise login first
   const ctaHref = isLoggedIn ? groupUrl : `/login?callbackUrl=${callbackUrl}`;
   const ctaLabel = isLoggedIn ? 'View in Dropzone →' : 'View on Dropzone →';
   const ctaSubtext = isLoggedIn
@@ -125,10 +136,10 @@ export default async function SharePage({ params }: { params: { token: string } 
         {/* Post card */}
         <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 12, overflow: 'hidden', marginBottom: '1.25rem' }}>
 
-          {/* Uploaded video (non-Facebook) */}
+          {/* Uploaded video — uses public media proxy */}
           {isUploadedVideo && (
             <video controls autoPlay={false} style={{ width: '100%', maxHeight: 400, background: '#000', display: 'block' }}>
-              <source src={`${BASE_URL}${post.uploadUrl}`} type="video/mp4" />
+              <source src={mediaProxyUrl} type="video/mp4" />
             </video>
           )}
 
@@ -152,10 +163,12 @@ export default async function SharePage({ params }: { params: { token: string } 
             </div>
           )}
 
+          {/* Uploaded image — uses public media proxy */}
           {isImage && (
-            <img src={`${BASE_URL}${post.uploadUrl}`} alt="shared image" style={{ width: '100%', maxHeight: 500, objectFit: 'cover', display: 'block' }} />
+            <img src={mediaProxyUrl} alt="shared image" style={{ width: '100%', maxHeight: 500, objectFit: 'cover', display: 'block' }} />
           )}
 
+          {/* External link preview image (unaffected, already public) */}
           {!isUploadedVideo && !isFbVideo && !isImage && post.image && (
             <img src={post.image} alt={post.title ?? 'preview'} style={{ width: '100%', maxHeight: 300, objectFit: 'cover', display: 'block' }} />
           )}
