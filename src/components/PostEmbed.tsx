@@ -207,14 +207,12 @@ function FacebookVideoEmbed({ url }: { url: string }) {
   if (state === 'ready' && videoUrl) {
     return (
       <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: '0.5rem', background: '#000' }}>
-        {/* muted is required for autoPlay to work in Chrome/Safari — user can unmute via controls */}
+        {/* No autoPlay — video is downloaded and ready, user chooses when to play */}
         <video
           src={videoUrl}
           controls
           playsInline
-          autoPlay
-          muted
-          preload="metadata"
+          preload="none"
           style={{ width: '100%', maxHeight: 520, display: 'block' }}
         />
       </div>
