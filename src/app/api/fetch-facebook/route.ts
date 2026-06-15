@@ -37,14 +37,17 @@ function getHashedPaths(fbUrl: string) {
     uploadsDir,
     outPath: path.join(uploadsDir, `fb_${hash}.mp4`),
     tmpPath: path.join(uploadsDir, `fb_${hash}.tmp.mp4`),
-    publicPath: `/api/uploads/fb_${hash}.mp4`,
+    // Serve directly from /uploads/ (Next.js static public folder) — NOT /api/uploads/
+    // This guarantees the browser receives Content-Type: video/mp4 and avoids MIME errors.
+    publicPath: `/uploads/fb_${hash}.mp4`,
     hash,
   };
 }
 
 /**
  * GET /api/fetch-facebook?url=<encoded_fb_url>
- * Returns the cached video if ready, or status=pending/error without blocking.
+ * Lightweight status check — no ffprobe, just a file-size check.
+ * Returns: { status: 'ready', url } | { status: 'pending' } | { status: 'not_started' }
  */
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -57,6 +60,7 @@ export async function GET(req: NextRequest) {
 
   const { outPath, publicPath, hash } = getHashedPaths(fbUrl);
 
+  // File exists and is large enough — ready to play, no ffprobe needed
   if (existsSync(outPath)) {
     const { size } = statSync(outPath);
     if (size >= MIN_VALID_BYTES) {
@@ -114,7 +118,7 @@ export async function POST(req: NextRequest) {
     unlinkSync(outPath);
   }
 
-  // If a background pre-fetch already has this in progress, report pending
+  // If already downloading, just report pending
   if (inProgress.has(hash)) {
     return NextResponse.json({ status: 'pending' }, { status: 202 });
   }
