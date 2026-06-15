@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 const MAX_BYTES = 200 * 1024 * 1024; // 200 MB
 const MIN_VALID_BYTES = 100 * 1024;  // 100 KB
 
-// Track in-progress downloads so concurrent requests don't double-spawn yt-dlp
+// Track in-progress downloads so concurrent requests don’t double-spawn yt-dlp
 const inProgress = new Set<string>();
 
 async function isValidVideo(filePath: string): Promise<boolean> {
@@ -37,9 +37,10 @@ function getHashedPaths(fbUrl: string) {
     uploadsDir,
     outPath: path.join(uploadsDir, `fb_${hash}.mp4`),
     tmpPath: path.join(uploadsDir, `fb_${hash}.tmp.mp4`),
-    // Serve directly from /uploads/ (Next.js static public folder) — NOT /api/uploads/
-    // This guarantees the browser receives Content-Type: video/mp4 and avoids MIME errors.
-    publicPath: `/uploads/fb_${hash}.mp4`,
+    // Keep serving via the API route so it stays behind auth.
+    // The MIME error was a browser caching issue, not a path issue —
+    // the API route correctly sets Content-Type via NextResponse headers.
+    publicPath: `/api/uploads/fb_${hash}.mp4`,
     hash,
   };
 }
@@ -47,7 +48,6 @@ function getHashedPaths(fbUrl: string) {
 /**
  * GET /api/fetch-facebook?url=<encoded_fb_url>
  * Lightweight status check — no ffprobe, just a file-size check.
- * Returns: { status: 'ready', url } | { status: 'pending' } | { status: 'not_started' }
  */
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -60,7 +60,6 @@ export async function GET(req: NextRequest) {
 
   const { outPath, publicPath, hash } = getHashedPaths(fbUrl);
 
-  // File exists and is large enough — ready to play, no ffprobe needed
   if (existsSync(outPath)) {
     const { size } = statSync(outPath);
     if (size >= MIN_VALID_BYTES) {
@@ -80,7 +79,6 @@ export async function GET(req: NextRequest) {
  * Starts or returns a cached Facebook video download.
  */
 export async function POST(req: NextRequest) {
-  // Allow either a logged-in user OR an internal background call from the share route
   const internalSecret = process.env.INTERNAL_API_SECRET;
   const callerSecret = req.headers.get('x-internal-secret');
   const isInternalCall = internalSecret && callerSecret === internalSecret;
@@ -109,7 +107,6 @@ export async function POST(req: NextRequest) {
   const { uploadsDir, outPath, tmpPath, publicPath, hash } = getHashedPaths(fbUrl);
   if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
 
-  // Return cached file if it already exists and is valid
   if (existsSync(outPath)) {
     const { size } = statSync(outPath);
     const valid = size >= MIN_VALID_BYTES && await isValidVideo(outPath);
@@ -118,19 +115,16 @@ export async function POST(req: NextRequest) {
     unlinkSync(outPath);
   }
 
-  // If already downloading, just report pending
   if (inProgress.has(hash)) {
     return NextResponse.json({ status: 'pending' }, { status: 202 });
   }
 
-  // Clean up any leftover temp file from a previous failed attempt
   if (existsSync(tmpPath)) {
     try { unlinkSync(tmpPath); } catch { /* ignore */ }
   }
 
   inProgress.add(hash);
   try {
-    // Step 1: Download raw video to temp file
     await execFileAsync('yt-dlp', [
       '--no-playlist',
       '--max-filesize', String(MAX_BYTES),
@@ -150,9 +144,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Step 2: Re-encode to H.264 (8-bit yuv420p) + AAC for guaranteed browser playback.
-    // -pix_fmt yuv420p: forces 8-bit color depth
-    // -movflags +faststart: moves the moov atom to the front for progressive playback
     await execFileAsync('ffmpeg', [
       '-y',
       '-i', tmpPath,

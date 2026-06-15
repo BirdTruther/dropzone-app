@@ -74,23 +74,35 @@ function TikTokEmbed({ url }: { url: string }) {
 type FBState = 'checking' | 'pending' | 'ready' | 'error';
 
 const POLL_INTERVAL = 4000;
-const MAX_POLLS = 75; // ~5 minutes
+const MAX_POLLS = 75;
 
 function FacebookVideoEmbed({ url }: { url: string }) {
-  const [state, setState] = useState<FBState>('checking');
+  // All mutable state lives in refs so poll callbacks never close over stale values
+  const stateRef = useRef<FBState>('checking');
+  const [displayState, setDisplayState] = useState<FBState>('checking');
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const pollCount = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const started = useRef(false);
+  const postFired = useRef(false);
 
-  function scheduleNextPoll() {
-    pollTimer.current = setTimeout(() => checkStatus(), POLL_INTERVAL);
+  function setFBState(s: FBState) {
+    stateRef.current = s;
+    setDisplayState(s);
   }
 
-  function checkStatus() {
-    if (pollCount.current > MAX_POLLS) {
-      setState('error');
+  function scheduleNextPoll(delayMs = POLL_INTERVAL) {
+    if (pollTimer.current) clearTimeout(pollTimer.current);
+    pollTimer.current = setTimeout(doCheck, delayMs);
+  }
+
+  // doCheck is defined as a stable ref so it never captures stale closure state
+  const doCheckRef = useRef<() => void>(() => {});
+  doCheckRef.current = function doCheck() {
+    if (stateRef.current === 'ready' || stateRef.current === 'error') return;
+
+    if (pollCount.current >= MAX_POLLS) {
+      setFBState('error');
       setErrorMsg('Video is taking too long to process. Try opening it on Facebook directly.');
       return;
     }
@@ -101,54 +113,58 @@ function FacebookVideoEmbed({ url }: { url: string }) {
       .then((data: any) => {
         if (data.status === 'ready' && data.url) {
           setVideoUrl(data.url);
-          setState('ready');
+          setFBState('ready');
         } else if (data.status === 'pending') {
-          // Download already running — keep polling
-          setState('pending');
+          setFBState('pending');
           scheduleNextPoll();
         } else if (data.status === 'not_started') {
-          // No download running yet — kick one off, then poll
-          if (!started.current) {
-            started.current = true;
+          // Kick off the download exactly once, then keep polling
+          if (!postFired.current) {
+            postFired.current = true;
             fetch('/api/fetch-facebook', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ url }),
-            }).catch(() => {/* fire and forget */});
+            }).catch(() => {});
           }
-          setState('pending');
+          setFBState('pending');
           scheduleNextPoll();
         } else if (data.error) {
           setErrorMsg(data.error);
-          setState('error');
+          setFBState('error');
         } else {
           scheduleNextPoll();
         }
       })
       .catch(() => scheduleNextPoll());
-  }
+  };
 
-  // On mount: check immediately — no artificial delay
+  function doCheck() { doCheckRef.current(); }
+
   useEffect(() => {
-    checkStatus();
+    // Small stagger so a feed full of FB posts doesn’t all fire at once
+    const jitter = Math.random() * 800;
+    pollTimer.current = setTimeout(doCheck, jitter);
     return () => { if (pollTimer.current) clearTimeout(pollTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url]);
 
   function retryDownload() {
-    setState('pending');
-    setErrorMsg(null);
+    postFired.current = false;
     pollCount.current = 0;
-    started.current = false;
+    setErrorMsg(null);
+    setVideoUrl(null);
+    setFBState('checking');
     if (pollTimer.current) clearTimeout(pollTimer.current);
     fetch('/api/fetch-facebook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
-    }).finally(() => scheduleNextPoll());
+    }).catch(() => {});
+    scheduleNextPoll(2000);
   }
 
-  if (state === 'error') {
+  if (displayState === 'error') {
     return (
       <div style={{ marginBottom: '0.5rem' }}>
         <a href={url} target="_blank" rel="noopener noreferrer"
@@ -167,22 +183,20 @@ function FacebookVideoEmbed({ url }: { url: string }) {
     );
   }
 
-  if (state === 'ready' && videoUrl) {
+  if (displayState === 'ready' && videoUrl) {
     return (
       <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: '0.5rem', background: '#000' }}>
-        {/* preload="metadata" loads just enough for the thumbnail/duration — no autoPlay */}
         <video
           src={videoUrl}
           controls
           playsInline
-          preload="metadata"
+          preload="none"
           style={{ width: '100%', maxHeight: 520, display: 'block' }}
         />
       </div>
     );
   }
 
-  // checking or pending — spinner
   return (
     <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, borderRadius: 8, marginBottom: '0.5rem', background: 'var(--color-surface-2)', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
@@ -190,7 +204,7 @@ function FacebookVideoEmbed({ url }: { url: string }) {
           style={{ opacity: 0.5, animation: 'fbSpin 1.2s linear infinite' }}>
           <circle cx="12" cy="12" r="10" strokeDasharray="40 20" />
         </svg>
-        {state === 'checking' ? 'Loading…' : 'Preparing Facebook video…'}
+        {displayState === 'checking' ? 'Loading…' : 'Preparing Facebook video…'}
         <style>{`@keyframes fbSpin { to { transform: rotate(360deg); } }`}</style>
       </div>
     </div>
