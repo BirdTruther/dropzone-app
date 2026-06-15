@@ -71,18 +71,22 @@ function TikTokEmbed({ url }: { url: string }) {
   );
 }
 
-type FBState = 'checking' | 'pending' | 'ready' | 'error';
+// 'verifying' = poll said ready, HEAD-checking the file is fully servable
+type FBState = 'checking' | 'pending' | 'verifying' | 'ready' | 'error';
 
 const POLL_INTERVAL = 4000;
 const MAX_POLLS = 75;
+// How many times to retry the HEAD check before giving up
+const MAX_HEAD_RETRIES = 5;
+const HEAD_RETRY_DELAY = 800;
 
 function FacebookVideoEmbed({ url }: { url: string }) {
-  // All mutable state lives in refs so poll callbacks never close over stale values
   const stateRef = useRef<FBState>('checking');
   const [displayState, setDisplayState] = useState<FBState>('checking');
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const pollCount = useRef(0);
+  const headRetries = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const postFired = useRef(false);
 
@@ -96,10 +100,46 @@ function FacebookVideoEmbed({ url }: { url: string }) {
     pollTimer.current = setTimeout(doCheck, delayMs);
   }
 
-  // doCheck is defined as a stable ref so it never captures stale closure state
+  /**
+   * HEAD-verify the video URL so the browser never sees a partially-written file.
+   * Retries up to MAX_HEAD_RETRIES times with HEAD_RETRY_DELAY ms between attempts.
+   * Only sets state to 'ready' once the server confirms Content-Type: video/mp4.
+   */
+  function verifyAndShow(vUrl: string) {
+    setFBState('verifying');
+    function attempt() {
+      fetch(vUrl, { method: 'HEAD' })
+        .then(res => {
+          const ct = res.headers.get('content-type') ?? '';
+          if (res.ok && ct.includes('video')) {
+            // File is fully written and correctly typed — safe to show the player
+            setVideoUrl(vUrl);
+            setFBState('ready');
+          } else if (headRetries.current < MAX_HEAD_RETRIES) {
+            headRetries.current += 1;
+            pollTimer.current = setTimeout(attempt, HEAD_RETRY_DELAY);
+          } else {
+            // Fallback: show anyway — player will handle it
+            setVideoUrl(vUrl);
+            setFBState('ready');
+          }
+        })
+        .catch(() => {
+          if (headRetries.current < MAX_HEAD_RETRIES) {
+            headRetries.current += 1;
+            pollTimer.current = setTimeout(attempt, HEAD_RETRY_DELAY);
+          } else {
+            setVideoUrl(vUrl);
+            setFBState('ready');
+          }
+        });
+    }
+    attempt();
+  }
+
   const doCheckRef = useRef<() => void>(() => {});
   doCheckRef.current = function doCheck() {
-    if (stateRef.current === 'ready' || stateRef.current === 'error') return;
+    if (stateRef.current === 'ready' || stateRef.current === 'error' || stateRef.current === 'verifying') return;
 
     if (pollCount.current >= MAX_POLLS) {
       setFBState('error');
@@ -112,13 +152,13 @@ function FacebookVideoEmbed({ url }: { url: string }) {
       .then(r => r.json())
       .then((data: any) => {
         if (data.status === 'ready' && data.url) {
-          setVideoUrl(data.url);
-          setFBState('ready');
+          // Don't show the player yet — HEAD-verify first
+          headRetries.current = 0;
+          verifyAndShow(data.url);
         } else if (data.status === 'pending') {
           setFBState('pending');
           scheduleNextPoll();
         } else if (data.status === 'not_started') {
-          // Kick off the download exactly once, then keep polling
           if (!postFired.current) {
             postFired.current = true;
             fetch('/api/fetch-facebook', {
@@ -142,7 +182,6 @@ function FacebookVideoEmbed({ url }: { url: string }) {
   function doCheck() { doCheckRef.current(); }
 
   useEffect(() => {
-    // Small stagger so a feed full of FB posts doesn’t all fire at once
     const jitter = Math.random() * 800;
     pollTimer.current = setTimeout(doCheck, jitter);
     return () => { if (pollTimer.current) clearTimeout(pollTimer.current); };
@@ -152,6 +191,7 @@ function FacebookVideoEmbed({ url }: { url: string }) {
   function retryDownload() {
     postFired.current = false;
     pollCount.current = 0;
+    headRetries.current = 0;
     setErrorMsg(null);
     setVideoUrl(null);
     setFBState('checking');
@@ -197,6 +237,7 @@ function FacebookVideoEmbed({ url }: { url: string }) {
     );
   }
 
+  // checking / pending / verifying — spinner
   return (
     <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, borderRadius: 8, marginBottom: '0.5rem', background: 'var(--color-surface-2)', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
