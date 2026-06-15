@@ -12,6 +12,9 @@ const execFileAsync = promisify(execFile);
 const MAX_BYTES = 200 * 1024 * 1024; // 200 MB
 const MIN_VALID_BYTES = 100 * 1024;  // 100 KB
 
+// Track in-progress downloads so concurrent requests don't double-spawn yt-dlp
+const inProgress = new Set<string>();
+
 async function isValidVideo(filePath: string): Promise<boolean> {
   try {
     await execFileAsync('ffprobe', [
@@ -27,6 +30,51 @@ async function isValidVideo(filePath: string): Promise<boolean> {
   }
 }
 
+function getHashedPaths(fbUrl: string) {
+  const hash = crypto.createHash('sha256').update(fbUrl).digest('hex').slice(0, 16);
+  const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+  return {
+    uploadsDir,
+    outPath: path.join(uploadsDir, `fb_${hash}.mp4`),
+    tmpPath: path.join(uploadsDir, `fb_${hash}.tmp.mp4`),
+    publicPath: `/api/uploads/fb_${hash}.mp4`,
+    hash,
+  };
+}
+
+/**
+ * GET /api/fetch-facebook?url=<encoded_fb_url>
+ * Returns the cached video if ready, or status=pending/error without blocking.
+ */
+export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const fbUrl = req.nextUrl.searchParams.get('url');
+  if (!fbUrl) return NextResponse.json({ error: 'Missing url param' }, { status: 400 });
+
+  const { outPath, publicPath, hash } = getHashedPaths(fbUrl);
+
+  if (existsSync(outPath)) {
+    const { size } = statSync(outPath);
+    if (size >= MIN_VALID_BYTES) {
+      return NextResponse.json({ status: 'ready', url: publicPath });
+    }
+  }
+
+  if (inProgress.has(hash)) {
+    return NextResponse.json({ status: 'pending' });
+  }
+
+  return NextResponse.json({ status: 'not_started' });
+}
+
+/**
+ * POST /api/fetch-facebook
+ * Starts or returns a cached Facebook video download.
+ */
 export async function POST(req: NextRequest) {
   // Allow either a logged-in user OR an internal background call from the share route
   const internalSecret = process.env.INTERNAL_API_SECRET;
@@ -54,13 +102,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not a Facebook URL' }, { status: 400 });
   }
 
-  const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+  const { uploadsDir, outPath, tmpPath, publicPath, hash } = getHashedPaths(fbUrl);
   if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
-
-  const hash = crypto.createHash('sha256').update(fbUrl).digest('hex').slice(0, 16);
-  const outPath = path.join(uploadsDir, `fb_${hash}.mp4`);
-  const tmpPath = path.join(uploadsDir, `fb_${hash}.tmp.mp4`);
-  const publicPath = `/api/uploads/fb_${hash}.mp4`;
 
   // Return cached file if it already exists and is valid
   if (existsSync(outPath)) {
@@ -71,11 +114,17 @@ export async function POST(req: NextRequest) {
     unlinkSync(outPath);
   }
 
+  // If a background pre-fetch already has this in progress, report pending
+  if (inProgress.has(hash)) {
+    return NextResponse.json({ status: 'pending' }, { status: 202 });
+  }
+
   // Clean up any leftover temp file from a previous failed attempt
   if (existsSync(tmpPath)) {
     try { unlinkSync(tmpPath); } catch { /* ignore */ }
   }
 
+  inProgress.add(hash);
   try {
     // Step 1: Download raw video to temp file
     await execFileAsync('yt-dlp', [
@@ -145,5 +194,7 @@ export async function POST(req: NextRequest) {
       : 'Could not download video. It may have been deleted or is unavailable.';
 
     return NextResponse.json({ error: message }, { status: 422 });
+  } finally {
+    inProgress.delete(hash);
   }
 }
