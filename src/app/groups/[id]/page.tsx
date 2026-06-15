@@ -190,11 +190,28 @@ export default function GroupPage() {
     e.preventDefault();
     if (!url.trim()) return;
     setPosting(true);
+    const trimmedUrl = url.trim();
     const res = await fetch(`/api/groups/${groupId}/posts`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: url.trim(), note: note.trim() || undefined }),
+      body: JSON.stringify({ url: trimmedUrl, note: note.trim() || undefined }),
     });
-    if (res.ok) { const post = await res.json(); setPosts(prev => [post, ...prev]); setUrl(''); setNote(''); }
+    if (res.ok) {
+      const post = await res.json();
+      setPosts(prev => [post, ...prev]);
+      setUrl('');
+      setNote('');
+
+      // If it's a Facebook video, kick off the background download immediately
+      // so the video is cached and ready by the time anyone tries to watch it.
+      const embed = getEmbed(trimmedUrl);
+      if (embed.type === 'facebook-video') {
+        fetch('/api/fetch-facebook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: trimmedUrl }),
+        }).catch(() => { /* background — errors are handled by the embed component */ });
+      }
+    }
     setPosting(false);
   }
 
