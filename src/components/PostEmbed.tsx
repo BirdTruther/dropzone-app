@@ -107,86 +107,78 @@ function TikTokEmbed({ url }: { url: string }) {
   );
 }
 
-// States: idle → loading → ready | error
-type FBState = 'idle' | 'loading' | 'ready' | 'error';
+// States: pending (downloading in background) → ready | error
+type FBState = 'pending' | 'ready' | 'error';
+
+const POLL_INTERVAL = 4000; // ms between status checks
+const MAX_POLLS = 75;       // give up after ~5 minutes
 
 function FacebookVideoEmbed({ url }: { url: string }) {
-  const [state, setState] = useState<FBState>('idle');
+  const [state, setState] = useState<FBState>('pending');
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [pollCount, setPollCount] = useState(0);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function load() {
-    if (state === 'loading') return;
-    setState('loading');
+  // Poll the GET endpoint to check if the background download is done
+  const poll = useRef<() => void>(() => {});
+  poll.current = () => {
+    if (state === 'ready') return;
+    setPollCount(prev => {
+      const next = prev + 1;
+      if (next > MAX_POLLS) {
+        setState('error');
+        setErrorMsg('Video is taking too long to process. Try opening it on Facebook directly.');
+        return next;
+      }
+      return next;
+    });
+
+    fetch(`/api/fetch-facebook?url=${encodeURIComponent(url)}`)
+      .then(r => r.json())
+      .then((data: any) => {
+        if (data.status === 'ready' && data.url) {
+          setVideoUrl(data.url);
+          setState('ready');
+        } else if (data.status === 'pending' || data.status === 'not_started') {
+          // still working — schedule next poll
+          pollTimer.current = setTimeout(() => poll.current(), POLL_INTERVAL);
+        } else if (data.error) {
+          setErrorMsg(data.error);
+          setState('error');
+        } else {
+          // unexpected shape — keep polling
+          pollTimer.current = setTimeout(() => poll.current(), POLL_INTERVAL);
+        }
+      })
+      .catch(() => {
+        // network hiccup — retry
+        pollTimer.current = setTimeout(() => poll.current(), POLL_INTERVAL);
+      });
+  };
+
+  // Kick off the first poll shortly after mount
+  useEffect(() => {
+    pollTimer.current = setTimeout(() => poll.current(), 1500);
+    return () => { if (pollTimer.current) clearTimeout(pollTimer.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url]);
+
+  function retryDownload() {
+    setState('pending');
     setErrorMsg(null);
+    setPollCount(0);
+    // Trigger the POST to restart the download, then start polling
     fetch('/api/fetch-facebook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
-    })
-      .then(r => r.ok ? r.json() : r.json().then((d: any) => Promise.reject(d.error ?? 'Failed')))
-      .then((data: any) => { setVideoUrl(data.url); setState('ready'); })
-      .catch((err: any) => { setErrorMsg(typeof err === 'string' ? err : 'Could not load video.'); setState('error'); });
+    }).finally(() => {
+      pollTimer.current = setTimeout(() => poll.current(), 1500);
+    });
   }
 
-  if (state === 'idle') {
-    return (
-      <button
-        onClick={load}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '0.75rem',
-          width: '100%', padding: '0.85rem 1rem',
-          borderRadius: 8, border: '1px solid var(--color-border)',
-          background: 'var(--color-surface-2)',
-          cursor: 'pointer', marginBottom: '0.5rem',
-          textAlign: 'left',
-        }}
-      >
-        <span style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 36, height: 36, borderRadius: '50%',
-          background: '#1877f2', flexShrink: 0,
-        }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2">
-            <polygon points="5 3 19 12 5 21 5 3" fill="#fff" stroke="none" />
-          </svg>
-        </span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>Load Facebook video</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 2 }}>Tap to download and play</div>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2">
-          <path d="M5 12h14M12 5l7 7-7 7" />
-        </svg>
-      </button>
-    );
-  }
-
-  if (state === 'loading') {
-    return (
-      <div style={{
-        position: 'relative', paddingBottom: '56.25%', height: 0,
-        borderRadius: 8, marginBottom: '0.5rem',
-        background: 'var(--color-surface-2)', overflow: 'hidden',
-      }}>
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          gap: '0.5rem', color: 'var(--color-text-muted)', fontSize: '0.82rem',
-        }}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
-            style={{ opacity: 0.5, animation: 'spin 1.2s linear infinite' }}>
-            <circle cx="12" cy="12" r="10" strokeDasharray="40 20" />
-          </svg>
-          Downloading Facebook video…
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
-      </div>
-    );
-  }
-
-  if (state === 'error' || !videoUrl) {
+  if (state === 'error' || (state !== 'ready' && pollCount > MAX_POLLS)) {
     return (
       <div style={{ marginBottom: '0.5rem' }}>
         <a href={url} target="_blank" rel="noopener noreferrer"
@@ -204,7 +196,7 @@ function FacebookVideoEmbed({ url }: { url: string }) {
             {errorMsg && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 2 }}>{errorMsg}</div>}
           </div>
         </a>
-        <button onClick={load}
+        <button onClick={retryDownload}
           style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
           ↻ Retry download
         </button>
@@ -212,18 +204,43 @@ function FacebookVideoEmbed({ url }: { url: string }) {
     );
   }
 
+  if (state === 'ready' && videoUrl) {
+    return (
+      <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: '0.5rem', background: '#000' }}>
+        {/* muted is required for autoPlay to work in Chrome/Safari — user can unmute via controls */}
+        <video
+          src={videoUrl}
+          controls
+          playsInline
+          autoPlay
+          muted
+          preload="metadata"
+          style={{ width: '100%', maxHeight: 520, display: 'block' }}
+        />
+      </div>
+    );
+  }
+
+  // pending — show a subtle progress indicator
   return (
-    <div style={{ borderRadius: 8, overflow: 'hidden', marginBottom: '0.5rem', background: '#000' }}>
-      {/* muted is required for autoPlay to work in Chrome/Safari — user can unmute via controls */}
-      <video
-        src={videoUrl}
-        controls
-        playsInline
-        autoPlay
-        muted
-        preload="metadata"
-        style={{ width: '100%', maxHeight: 520, display: 'block' }}
-      />
+    <div style={{
+      position: 'relative', paddingBottom: '56.25%', height: 0,
+      borderRadius: 8, marginBottom: '0.5rem',
+      background: 'var(--color-surface-2)', overflow: 'hidden',
+    }}>
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        gap: '0.5rem', color: 'var(--color-text-muted)', fontSize: '0.82rem',
+      }}>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"
+          style={{ opacity: 0.5, animation: 'fbSpin 1.2s linear infinite' }}>
+          <circle cx="12" cy="12" r="10" strokeDasharray="40 20" />
+        </svg>
+        Preparing Facebook video…
+        <style>{`@keyframes fbSpin { to { transform: rotate(360deg); } }`}</style>
+      </div>
     </div>
   );
 }
