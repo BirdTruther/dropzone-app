@@ -1,7 +1,7 @@
 import { readdir, stat } from 'fs/promises';
 import { join } from 'path';
 
-export const MAX_FILE_SIZE = 100 * 1024 * 1024;       // 100MB per file
+export const MAX_FILE_SIZE = 300 * 1024 * 1024;       // 300MB per file
 export const MAX_VOLUME_SIZE = 20 * 1024 * 1024 * 1024; // 20GB total
 
 export async function getUploadsSize(): Promise<number> {
