@@ -130,8 +130,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true, isAdmin: true },
+  });
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+  const isAdmin = (user as any).isAdmin === true;
 
   const membership = await prisma.groupMember.findUnique({
     where: { userId_groupId: { userId: user.id, groupId: params.id } },
@@ -144,9 +149,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
 
-  console.log(`[upload] file.name=${file.name} file.type=${file.type} file.size=${file.size}`);
+  console.log(`[upload] file.name=${file.name} file.type=${file.type} file.size=${file.size} isAdmin=${isAdmin}`);
 
-  if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'File too large (max 100MB)' }, { status: 400 });
+  if (!isAdmin && file.size > MAX_FILE_SIZE) {
+    return NextResponse.json({ error: 'File too large (max 300MB)' }, { status: 400 });
+  }
 
   const isVideo = ALLOWED_VIDEO.includes(file.type);
   const isImage = ALLOWED_IMAGE.includes(file.type) || isJxrFile(file);
@@ -155,9 +162,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (!isVideo && !isImage) return NextResponse.json({ error: 'Unsupported file type' }, { status: 400 });
 
-  const currentSize = await getUploadsSize();
-  if (currentSize + file.size > MAX_VOLUME_SIZE) {
-    return NextResponse.json({ error: 'Storage is full. Please contact the admin.' }, { status: 507 });
+  if (!isAdmin) {
+    const currentSize = await getUploadsSize();
+    if (currentSize + file.size > MAX_VOLUME_SIZE) {
+      return NextResponse.json({ error: 'Storage is full. Please contact the admin.' }, { status: 507 });
+    }
   }
 
   const uploadDir = join(process.cwd(), 'public', 'uploads');
