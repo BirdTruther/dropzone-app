@@ -132,11 +132,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
-    select: { id: true, isAdmin: true },
+    select: { id: true, isSiteAdmin: true },
   });
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-  const isAdmin = (user as any).isAdmin === true;
+  const isAdmin = user.isSiteAdmin === true;
 
   const membership = await prisma.groupMember.findUnique({
     where: { userId_groupId: { userId: user.id, groupId: params.id } },
