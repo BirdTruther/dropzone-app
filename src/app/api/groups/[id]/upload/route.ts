@@ -10,14 +10,6 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { MAX_FILE_SIZE, MAX_VOLUME_SIZE, getUploadsSize } from '@/lib/storage';
 
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '500mb',
-    },
-  },
-};
-
 const execFileAsync = promisify(execFile);
 
 const ALLOWED_VIDEO = [
