@@ -15,13 +15,13 @@ A private group link-sharing web app. Share links, videos, and images with frien
 ## Features
 - 🔗 Link sharing with rich OG previews
 - 🎥 Video & image uploads (100MB max per file, 20GB total)
+- 📦 GIF Support
 - 🖼️ JPEG XR support — Windows HDR screenshots (.jxr) are automatically converted to PNG on upload via ffmpeg
 - ♾️ Uploads kept indefinitely — no expiry
 - 🔗 Share links — generate a public preview URL for any post that embeds in Discord and iMessage
 - ❤️ Emoji reactions on posts
 - 💬 Comments on posts — threaded discussion per drop with delete support
 - 👥 Private invite-only groups
-- 🗑️ Authors can delete their own posts
 - 📱 PWA — installable on iOS and Android
 - 🔔 Push notifications — get alerted about new drops and reactions even when the app is closed
 - 🌙 Dark mode
