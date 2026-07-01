@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.92 - July 1,2026
+- Confirmed basic gif support 🎞️
+- Added Copy/Paste - no need to upload. 
+
 ## v0.91 — May 26, 2026
 
 ### Share Links
