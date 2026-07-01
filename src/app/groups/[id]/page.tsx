@@ -27,6 +27,11 @@ interface Member { id: string; name: string; avatar?: string; email: string; rol
 const REACTION_OPTIONS = ['❤️', '😂', '🔥', '👀', '😮', '👍'];
 const EMOJI_OPTIONS = ['🔗','🎮','🎵','🎬','📚','💡','🏆','🌍','🍕','😂','🔥','💬','📸','🎨','⚽','🐦','🚀','🛠️','💎','🌙'];
 
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'image/jxr', 'image/vnd.ms-photo',
+]);
+
 function avatarColor(name: string) {
   const colors = ['#5b6af7','#e05c9a','#f97316','#22c55e','#06b6d4','#a855f7','#eab308','#ef4444'];
   let hash = 0;
@@ -108,6 +113,7 @@ export default function GroupPage() {
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [sharedId, setSharedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pasteToast, setPasteToast] = useState<string | null>(null);
 
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [reactionPopupPostId, setReactionPopupPostId] = useState<string | null>(null);
@@ -146,6 +152,38 @@ export default function GroupPage() {
     const interval = setInterval(loadPosts, 15000);
     return () => clearInterval(interval);
   }, [status, loadPosts]);
+
+  // ── Clipboard paste handler ──────────────────────────────────────────────
+  useEffect(() => {
+    function handlePaste(e: ClipboardEvent) {
+      // Ignore paste events that originate inside text inputs / textareas
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind === 'file' && ALLOWED_IMAGE_TYPES.has(item.type)) {
+          const file = item.getAsFile();
+          if (!file) continue;
+          // Give the pasted blob a sensible filename based on its MIME type
+          const ext = item.type.split('/')[1].replace('vnd.ms-photo', 'jxr');
+          const namedFile = new File([file], `pasted-image.${ext}`, { type: item.type });
+          setUploadFile(namedFile);
+          setPasteToast(`📋 Image pasted! (${(namedFile.size / 1024).toFixed(0)} KB)`);
+          setTimeout(() => setPasteToast(null), 3000);
+          e.preventDefault();
+          break;
+        }
+      }
+    }
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
+  // ────────────────────────────────────────────────────────────────────────
 
   function openEdit() {
     if (!group) return;
@@ -310,6 +348,21 @@ export default function GroupPage() {
     <PullToRefresh onRefresh={loadPosts}>
     <div style={{ maxWidth: 700, margin: '0 auto', padding: '1rem' }}>
 
+      {/* Paste toast notification */}
+      {pasteToast && (
+        <div style={{
+          position: 'fixed', bottom: '1.5rem', left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-full)', padding: '0.5rem 1.1rem',
+          fontSize: '0.85rem', fontWeight: 600, zIndex: 200,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+          animation: 'fadeInUp 0.2s cubic-bezier(0.16,1,0.3,1)',
+        }}>
+          <style>{`@keyframes fadeInUp { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }`}</style>
+          {pasteToast}
+        </div>
+      )}
+
       {lightboxSrc && <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
 
       {reactionPopupPostId && (() => {
@@ -429,7 +482,7 @@ export default function GroupPage() {
       <div className="card" style={{ marginBottom: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
         {uploadFile ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0.75rem', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-sm)', fontSize: '0.875rem' }}>
-            <span>{uploadFile.type.startsWith('video') ? '🎬' : '🖼️'}</span>
+            <span>{uploadFile.type.startsWith('video') ? '🎬' : uploadFile.type === 'image/gif' ? '🎞️' : '🖼️'}</span>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{uploadFile.name}</span>
             <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>{(uploadFile.size / 1024 / 1024).toFixed(1)}MB</span>
             <button onClick={() => setUploadFile(null)} disabled={uploading} style={{ color: 'var(--color-text-muted)', fontSize: '1rem' }}>✕</button>
@@ -439,7 +492,7 @@ export default function GroupPage() {
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <input type="url" placeholder="Paste a link..." value={url} onChange={e => setUrl(e.target.value)} required style={{ fontSize: '0.95rem', flex: 1 }} />
               <button type="button" onClick={() => fileInputRef.current?.click()}
-                title="Upload a video or image"
+                title="Upload a video or image (or Ctrl+V to paste)"
                 style={{ padding: '0 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: '1.1rem', cursor: 'pointer', flexShrink: 0 }}>
                 📎
               </button>
@@ -447,6 +500,13 @@ export default function GroupPage() {
           </form>
         )}
         <input placeholder="Add a note (optional)" value={note} onChange={e => setNote(e.target.value)} disabled={uploading} />
+
+        {/* Paste hint — shown only when composer is idle */}
+        {!uploadFile && !uploading && (
+          <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', margin: 0 }}>
+            💡 Tip: press <kbd style={{ fontFamily: 'monospace', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 3, padding: '0 3px', fontSize: '0.7rem' }}>Ctrl+V</kbd> anywhere on the page to paste an image directly.
+          </p>
+        )}
 
         {uploading && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
@@ -496,6 +556,8 @@ export default function GroupPage() {
             const hasEmbed = embed.type !== 'none';
             const isMyPost = post.author.id === userId;
             const totalReactions = post.reactions.length;
+            // Detect GIFs by URL extension or MIME stored in uploadType metadata
+            const isGif = post.uploadUrl?.toLowerCase().endsWith('.gif') ?? false;
             return (
               <div key={post.id} className="card" style={{ padding: '0.9rem', opacity: deletingId === post.id ? 0.5 : 1, transition: 'opacity 0.2s' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
@@ -537,11 +599,21 @@ export default function GroupPage() {
                 )}
 
                 {post.uploadType === 'image' && post.uploadUrl && (
+                  // GIFs use objectFit:contain so the animation plays unclipped.
+                  // Static images keep objectFit:cover for a cleaner card crop.
                   <img
                     src={post.uploadUrl}
                     alt="uploaded"
                     onClick={() => setLightboxSrc(post.uploadUrl!)}
-                    style={{ width: '100%', borderRadius: 8, maxHeight: 500, objectFit: 'cover', marginBottom: '0.5rem', cursor: 'zoom-in' }}
+                    style={{
+                      width: '100%',
+                      borderRadius: 8,
+                      maxHeight: isGif ? undefined : 500,
+                      objectFit: isGif ? 'contain' : 'cover',
+                      background: isGif ? 'var(--color-surface-2)' : undefined,
+                      marginBottom: '0.5rem',
+                      cursor: 'zoom-in',
+                    }}
                   />
                 )}
 
