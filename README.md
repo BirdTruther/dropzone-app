@@ -48,13 +48,17 @@ Accessible at `/admin` by any user with `isSiteAdmin = true`.
 
 ## Getting Started
 
-### 1. Clone
+### Quick Start (pre-built image)
+
+No build step required — the app is published to GitHub Container Registry on every update.
+
+#### 1. Clone
 ```bash
 git clone https://github.com/BirdTruther/dropzone-app.git
 cd dropzone-app
 ```
 
-### 2. Configure Environment
+#### 2. Configure Environment
 ```bash
 cp .env.example .env
 # Edit .env with your values
@@ -62,7 +66,7 @@ cp .env.example .env
 
 > ⚠️ Make sure `NEXTAUTH_URL` is set to your full `https://` domain (e.g. `https://link.yourserver.com`). Discord and other platforms require HTTPS for image embeds.
 
-### 3. Generate VAPID Keys (for push notifications)
+#### 3. Generate VAPID Keys (for push notifications)
 
 Push notifications require a one-time key generation step:
 
@@ -80,7 +84,7 @@ VAPID_MAILTO=mailto:you@example.com
 
 > Push notifications will be silently skipped if these keys are not set — the rest of the app works normally without them.
 
-### 4. Create the uploads directory
+#### 4. Create the uploads directory
 
 Before first launch, create the host directory that stores all uploaded and downloaded media:
 
@@ -90,16 +94,46 @@ mkdir -p uploads
 
 This folder is bind-mounted into the container at `/app/public/uploads` and persists across all restarts and rebuilds.
 
-### 5. Run with Docker
+#### 5. Run with Docker
 ```bash
-sudo docker compose up -d
+docker compose up -d
 ```
+
+Docker pulls the latest image from `ghcr.io/birdtruther/dropzone-app:latest`, runs database migrations automatically, and starts the app.
 
 App runs at: `http://localhost:3000`
 
-### 6. Sync Database Schema
+#### 6. Database Schema
 
-Schema migrations run automatically via the `migrate` service in `docker-compose.yml` every time you run `updatedropzone`. Manual host-level `npx prisma migrate dev` or `npx prisma db push` are **not needed** and may fail on the host due to a Prisma 7 ESM compatibility issue with Node 18/20. Always use the Docker-based migration flow.
+No manual migration step needed. The container runs `npx prisma db push` on every startup, so schema changes are applied automatically when you update to a new image.
+
+### Development (build from source)
+
+If you want to build locally instead of pulling the pre-built image:
+
+```bash
+git clone https://github.com/BirdTruther/dropzone-app.git
+cd dropzone-app
+docker compose up --build -d
+```
+
+## How Updates Work
+
+Dropzone uses GitHub Actions to build and publish a Docker image to `ghcr.io/birdtruther/dropzone-app` on every push to `main`.
+
+**To update your running instance:**
+
+1. Pull the latest changes and image:
+```bash
+cd dropzone-app
+git pull
+docker compose pull app
+docker compose up -d
+```
+
+2. The container automatically runs `npx prisma db push` on startup, so any schema changes are applied before the app serves traffic.
+
+> If you use [Cosmos Cloud](https://cosmos-cloud.io), the `cosmos-compose.yaml` in this repo has `cosmos-auto-update: true` — Cosmos will detect new images and update automatically on its 6-hour check cycle.
 
 ## Facebook Video Embeds
 
@@ -223,7 +257,12 @@ src/
     storage.ts          # Upload size tracking and limits
 prisma/
   schema.prisma         # Database schema
-docker-compose.yml
+.github/
+  workflows/
+    docker-publish.yml  # CI/CD — builds and pushes to ghcr.io on push to main
+docker-compose.yml      # Compose file (pulls pre-built image from ghcr.io)
+cosmos-compose.yaml     # Cosmos Cloud compose (auto-update enabled)
+docker-entrypoint.sh    # Runs prisma db push on startup, then starts the server
 Dockerfile
 ```
 
