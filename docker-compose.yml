@@ -13,7 +13,7 @@ services:
       - "5432:5432"
 
   app:
-    build: .
+    image: ghcr.io/birdtruther/dropzone-app:latest
     container_name: dropzone-app
     restart: unless-stopped
     ports:
@@ -21,24 +21,9 @@ services:
     env_file:
       - .env
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      - db
     volumes:
       - ./uploads:/app/public/uploads
-
-  migrate:
-    image: node:20-alpine
-    container_name: dropzone-migrate
-    env_file:
-      - .env
-    depends_on:
-      - db
-    working_dir: /app
-    volumes:
-      - .:/app
-    entrypoint: ["/bin/sh", "-c"]
-    command: ["npm install && npx prisma db push"]
-    restart: "no"
 
 volumes:
   pg_data:

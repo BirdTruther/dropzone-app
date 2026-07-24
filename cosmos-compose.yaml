@@ -22,6 +22,8 @@ services:
       - default
     env_file:
       - .env
+    volumes:
+      - /DATA/AppData/dropzone/uploads:/app/public/uploads
     depends_on:
       - db
     labels:
