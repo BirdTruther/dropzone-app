@@ -23,7 +23,10 @@ services:
     env_file:
       - .env
     volumes:
-      - /DATA/AppData/dropzone/uploads:/app/public/uploads
+      # Matches the live host path used by the current deployment.
+      # All uploaded files and Facebook video cache live here and persist
+      # across every image update and container restart.
+      - /DATA/AppData/dropzone/dropzone-app/uploads:/app/public/uploads
     depends_on:
       - db
     labels:
