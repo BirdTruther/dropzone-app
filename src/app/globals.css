@@ -23,6 +23,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+  touch-action: manipulation eliminates the 300ms tap delay on iOS Safari.
+  This is triggered by the maximumScale:1 / userScalable:false viewport
+  settings in layout.tsx. Without this, every tap on the entire app
+  waits 300ms before firing — feels sluggish on iPhone.
+*/
+a, button, input, textarea, select, [role="button"] {
+  touch-action: manipulation;
+}
+
 a { color: inherit; text-decoration: none; }
 button { cursor: pointer; font: inherit; border: none; background: none; }
 input, textarea {
