@@ -47,20 +47,15 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 
-# Prisma runtime: generated client binaries
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-# Prisma CLI package (node_modules/prisma/build/index.js is our entrypoint)
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-# @prisma/* packages (client, engines, etc.)
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-# 'effect' is a runtime peer dependency of @prisma/config (Prisma v6+).
-# @prisma/config/dist/index.js requires it directly — without it the
-# entrypoint crashes with: Error: Cannot find module 'effect'
-COPY --from=builder /app/node_modules/effect ./node_modules/effect
-# NOTE: node_modules/.bin/prisma is intentionally NOT copied.
-# That shim is a plain file in the runner stage (symlinks don't survive
-# multi-stage COPY), so its __dirname-based WASM resolution breaks.
-# Use 'node node_modules/prisma/build/index.js' in the entrypoint instead.
+# Copy the full node_modules from the builder stage.
+# Prisma v6 introduced @prisma/config which pulls in 'effect' -> 'fast-check'
+# and potentially more transitive deps at CLI runtime. Copying individual
+# packages one by one every time a new dep appears in the chain is
+# unsustainable. The full node_modules ensures 'node node_modules/prisma/build/index.js'
+# in the entrypoint always has everything it needs, regardless of Prisma version.
+# The standalone Next.js bundle already contains all app runtime deps separately,
+# so this only adds the Prisma CLI dependency tree used during migration.
+COPY --from=builder /app/node_modules ./node_modules
 
 RUN mkdir -p public/uploads
 
