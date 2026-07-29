@@ -7,7 +7,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Prisma v6 validates datasource.url at generate time.
+# Prisma validates datasource.url at generate time.
 # DATABASE_URL is a runtime secret so we pass a dummy value here just to
 # satisfy the schema validation. The real value is injected at runtime.
 ARG DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
@@ -52,13 +52,10 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 
 # Copy the full node_modules from the builder stage.
-# Prisma v6 introduced @prisma/config which pulls in 'effect' -> 'fast-check'
-# and potentially more transitive deps at CLI runtime. Copying individual
-# packages one by one every time a new dep appears in the chain is
-# unsustainable. The full node_modules ensures 'node node_modules/prisma/build/index.js'
+# Prisma pulls in @prisma/config -> effect -> fast-check and more transitive
+# deps. Copying the full node_modules ensures 'node node_modules/prisma/build/index.js'
 # in the entrypoint always has everything it needs, regardless of Prisma version.
-# The standalone Next.js bundle already contains all app runtime deps separately,
-# so this only adds the Prisma CLI dependency tree used during migration.
+# The standalone Next.js bundle already contains all app runtime deps separately.
 COPY --from=builder /app/node_modules ./node_modules
 
 RUN mkdir -p public/uploads
