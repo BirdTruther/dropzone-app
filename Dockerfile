@@ -7,12 +7,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# DATABASE_URL dummy value satisfies any tooling that reads env at generate time.
+# Dummy DATABASE_URL so prisma generate can validate the schema at build time.
+# The real value is injected at container runtime via the compose environment.
 ARG DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 ENV DATABASE_URL=$DATABASE_URL
-# Prisma 7: url removed from schema.prisma (P1012 hard error).
-# driverAdapters preview feature means NO query engine binary is needed,
-# so generate only outputs the JS client - fast and no binary downloads.
 RUN node node_modules/prisma/build/index.js generate && npm run build
 
 FROM node:20-alpine AS jxrlib
@@ -41,7 +39,6 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/prisma.config.js ./prisma.config.js
 
 RUN mkdir -p public/uploads
 
