@@ -12,7 +12,7 @@ c.connect().then(() => { c.end(); process.exit(0); }).catch(() => process.exit(1
 done
 
 echo "Running database migrations..."
-node node_modules/prisma/build/index.js migrate deploy
+node node_modules/prisma/build/index.js migrate deploy --config ./prisma.config.js
 
 echo "Starting server..."
 exec node server.js
