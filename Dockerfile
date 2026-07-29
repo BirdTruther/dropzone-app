@@ -26,7 +26,7 @@ RUN apk add --no-cache git gcc g++ make musl-dev \
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-RUN apk add --no-cache python3 py3-pip ffmpeg imagemagick imagemagick-tiff \
+RUN apk add --no-cache python3 py3-pip ffmpeg imagemagick imagemagick-tiff openssl \
   && pip3 install --break-system-packages --no-cache-dir --upgrade yt-dlp
 
 COPY --from=jxrlib /usr/local/bin/JxrDecApp /usr/local/bin/JxrDecApp
