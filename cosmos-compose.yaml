@@ -1,18 +1,39 @@
+# Cosmos Cloud compose file for Dropzone
+# Docs: https://cosmos-cloud.io/doc/compose
+#
+# HOW TO USE:
+#   1. Copy this file into Cosmos > Apps > Import Compose.
+#   2. Fill in every <CHANGE_ME> value before saving.
+#   3. The app image is pulled from GHCR automatically on first start
+#      (and on every update when cosmos-auto-update: true).
+#   4. You do NOT need to wait for the GitHub Actions build to finish
+#      before importing this YAML — Cosmos will pull the image at start time.
+#      Just make sure the image tag you reference actually exists in GHCR
+#      before you hit "Start". Check: https://github.com/BirdTruther/dropzone-app/pkgs/container/dropzone-app
+
 services:
+
   db:
     image: postgres:16-alpine
     container_name: dropzone-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: dropzone
-      POSTGRES_PASSWORD: dropzone_pass
+      POSTGRES_PASSWORD: <CHANGE_ME_DB_PASSWORD>
       POSTGRES_DB: dropzone
     volumes:
       - pg_data:/var/lib/postgresql/data
     networks:
       - default
+    # Cosmos / Docker will not start the app until Postgres is accepting connections.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dropzone -d dropzone"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     labels:
-      - cosmos-icon: https://www.postgresql.org/media/img/about/press/elephant.png
+      - cosmos-icon=https://www.postgresql.org/media/img/about/press/elephant.png
 
   app:
     image: ghcr.io/birdtruther/dropzone-app:latest
@@ -20,22 +41,28 @@ services:
     restart: unless-stopped
     networks:
       - default
-    env_file:
-      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # Postgres connection string — must match the db service credentials above.
+      DATABASE_URL: postgres://dropzone:<CHANGE_ME_DB_PASSWORD>@dropzone-db:5432/dropzone
+      # NextAuth — set NEXTAUTH_URL to your public domain, e.g. https://dropzone.example.com
+      NEXTAUTH_URL: https://<CHANGE_ME_YOUR_DOMAIN>
+      NEXTAUTH_SECRET: <CHANGE_ME_RANDOM_SECRET_32_CHARS>
+      # Add any other app-specific env vars here (S3, SMTP, etc.)
     volumes:
-      # Matches the live host path used by the current deployment.
-      # All uploaded files and Facebook video cache live here and persist
-      # across every image update and container restart.
+      # Uploaded files and video cache persist across restarts and image updates.
       - /DATA/AppData/dropzone/dropzone-app/uploads:/app/public/uploads
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     labels:
-      - cosmos-force-network-secured: true
-      - cosmos-auto-update: true
-      - cosmos-icon: https://raw.githubusercontent.com/BirdTruther/dropzone-app/main/public/icon.png
-      - cosmos-url: dropzone.local
-      - cosmos-port: 3000
-      - cosmos-network: default
+      - cosmos-auto-update=true
+      - cosmos-icon=https://raw.githubusercontent.com/BirdTruther/dropzone-app/main/public/icon.png
+      # Replace with your actual domain registered in Cosmos
+      - cosmos-url=https://<CHANGE_ME_YOUR_DOMAIN>
+      - cosmos-port=3000
+      - cosmos-network=default
 
 networks:
   default:
@@ -43,3 +70,4 @@ networks:
 
 volumes:
   pg_data:
+    driver: local
