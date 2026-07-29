@@ -3,6 +3,20 @@ name: Build and Push to GHCR
 on:
   push:
     branches: [main]
+    paths:
+      - 'app/**'
+      - 'components/**'
+      - 'lib/**'
+      - 'pages/**'
+      - 'prisma/schema.prisma'
+      - 'prisma/migrations/**'
+      - 'public/**'
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'next.config.*'
+      - 'tsconfig.json'
+      - 'Dockerfile'
   workflow_dispatch:
 
 env:
