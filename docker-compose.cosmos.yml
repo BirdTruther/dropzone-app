@@ -1,0 +1,55 @@
+# Cosmos Cloud compose file for dropzone-app
+# Copy this file and fill in your own values, or use Cosmos environment variable injection.
+# Do NOT commit your personal secrets to git — use Cosmos UI or a local .env file.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: dropzone-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dropzone
+      POSTGRES_PASSWORD: dropzone_pass
+      POSTGRES_DB: dropzone
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dropzone -d dropzone"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    labels:
+      - cosmos-icon=https://www.postgresql.org/media/img/about/press/elephant.png
+
+  app:
+    image: ghcr.io/birdtruther/dropzone-app:latest
+    container_name: dropzone-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://dropzone:dropzone_pass@dropzone-db:5432/dropzone
+      NEXTAUTH_URL: https://your.domain.here
+      NEXTAUTH_SECRET: your-nextauth-secret
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: your-vapid-public-key
+      VAPID_PRIVATE_KEY: your-vapid-private-key
+      VAPID_MAILTO: mailto:your@email.com
+      NEXT_PUBLIC_SITE_HOSTNAME: your.domain.here
+      INTERNAL_API_SECRET: your-internal-api-secret
+    volumes:
+      - /DATA/AppData/dropzone/dropzone-app/uploads:/app/public/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    labels:
+      - cosmos-auto-update=true
+      - cosmos-icon=https://raw.githubusercontent.com/BirdTruther/dropzone-app/main/public/icon.png
+      - cosmos-url=https://your.domain.here
+      - cosmos-port=3000
+      - cosmos-network=default
+
+volumes:
+  pg_data:
+    external: true
+    name: dropzone-app_pg_data

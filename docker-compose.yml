@@ -27,3 +27,5 @@ services:
 
 volumes:
   pg_data:
+    external: true
+    name: dropzone-app_pg_data
