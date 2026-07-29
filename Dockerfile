@@ -46,8 +46,15 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
+
+# Prisma runtime: generated client binaries
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+# Prisma schema engine (needed by db push / migrate)
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+# @prisma/* packages (client, engines, etc.)
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+# Prisma CLI entry point so the entrypoint script can invoke it without npx
+COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 
 RUN mkdir -p public/uploads
 
