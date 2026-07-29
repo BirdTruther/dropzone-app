@@ -14,7 +14,7 @@ export async function GET() {
     let current: { version: string; date: string; items: string[] } | null = null;
 
     for (const line of raw.split('\n')) {
-      const heading = line.match(/^## (v[\d.]+)[\s\u2014-]+(.+)/);
+      const heading = line.match(/^## (v[\d.]+)[\s\u2014\-–]+(.+)/);
       if (heading) {
         if (current) releases.push(current);
         current = { version: heading[1], date: heading[2].trim(), items: [] };
