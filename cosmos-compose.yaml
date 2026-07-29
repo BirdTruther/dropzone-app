@@ -23,8 +23,6 @@ services:
       POSTGRES_DB: dropzone
     volumes:
       - pg_data:/var/lib/postgresql/data
-    networks:
-      - default
     # Cosmos / Docker will not start the app until Postgres is accepting connections.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dropzone -d dropzone"]
@@ -39,8 +37,6 @@ services:
     image: ghcr.io/birdtruther/dropzone-app:latest
     container_name: dropzone-app
     restart: unless-stopped
-    networks:
-      - default
     environment:
       NODE_ENV: production
       PORT: "3000"
@@ -64,9 +60,13 @@ services:
       - cosmos-port=3000
       - cosmos-network=default
 
-networks:
-  default:
-    driver: bridge
+# NOTE: No explicit 'networks:' block is declared here.
+# Docker Compose automatically creates an implicit default network for the
+# project and connects all services to it. Declaring 'networks: default:
+# driver: bridge' explicitly causes Cosmos to fail with:
+#   "operation is not permitted on predefined default network"
+# Both 'db' and 'app' can still reach each other by service name (dropzone-db)
+# via the implicit network without any explicit declaration.
 
 volumes:
   pg_data:
