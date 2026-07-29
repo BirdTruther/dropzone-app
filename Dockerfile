@@ -53,6 +53,10 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 # @prisma/* packages (client, engines, etc.)
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+# 'effect' is a runtime peer dependency of @prisma/config (Prisma v6+).
+# @prisma/config/dist/index.js requires it directly — without it the
+# entrypoint crashes with: Error: Cannot find module 'effect'
+COPY --from=builder /app/node_modules/effect ./node_modules/effect
 # NOTE: node_modules/.bin/prisma is intentionally NOT copied.
 # That shim is a plain file in the runner stage (symlinks don't survive
 # multi-stage COPY), so its __dirname-based WASM resolution breaks.
