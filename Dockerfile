@@ -7,7 +7,11 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Regenerate Prisma client from schema before building
+# Prisma v6 validates datasource.url at generate time.
+# DATABASE_URL is a runtime secret so we pass a dummy value here just to
+# satisfy the schema validation. The real value is injected at runtime.
+ARG DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
+ENV DATABASE_URL=$DATABASE_URL
 RUN npx prisma generate && npm run build
 
 # Build JxrDecApp/JxrEncApp from jxrlib source so ImageMagick can decode JXR files.
