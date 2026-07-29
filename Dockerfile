@@ -12,13 +12,11 @@ COPY . .
 # satisfy the schema validation. The real value is injected at runtime.
 ARG DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 ENV DATABASE_URL=$DATABASE_URL
-RUN npx prisma generate && npm run build
+# Use node directly instead of npx to avoid network fetches for engine binaries.
+# binaryTargets in schema.prisma ensures the linux-musl engine is bundled here.
+RUN node node_modules/prisma/build/index.js generate && npm run build
 
 # Build JxrDecApp/JxrEncApp from jxrlib source so ImageMagick can decode JXR files.
-# The Makefile defines CFLAGS with = (not ?=), so command-line CFLAGS overrides it
-# entirely. We must supply the full original CFLAGS plus -fpermissive so GCC 15
-# doesn't reject the C89-era implicit pointer casts as hard errors.
-# Binaries are output to /jxrlib/build/ (not /jxrlib/JxrDecApp/ etc.)
 FROM node:20-alpine AS jxrlib
 RUN apk add --no-cache git gcc g++ make musl-dev \
   && git clone --depth 1 https://github.com/4creators/jxrlib.git /jxrlib \
@@ -32,15 +30,9 @@ RUN apk add --no-cache git gcc g++ make musl-dev \
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Install Python + pip + yt-dlp (always latest) + ffmpeg for video processing.
-# Install imagemagick + imagemagick-tiff for image conversion.
-# imagemagick-tiff adds the TIFF codec module that the base imagemagick package
-# omits on Alpine. Xbox/Windows 11 HDR game screenshots (.jxr) are TIFF
-# containers with JXR-compressed pixel data; magick needs libtiff to open them.
 RUN apk add --no-cache python3 py3-pip ffmpeg imagemagick imagemagick-tiff \
   && pip3 install --break-system-packages --no-cache-dir --upgrade yt-dlp
 
-# Copy JxrDecApp/JxrEncApp binaries built from source (required by ImageMagick for JXR)
 COPY --from=jxrlib /usr/local/bin/JxrDecApp /usr/local/bin/JxrDecApp
 COPY --from=jxrlib /usr/local/bin/JxrEncApp /usr/local/bin/JxrEncApp
 
@@ -50,12 +42,6 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
-
-# Copy the full node_modules from the builder stage.
-# Prisma pulls in @prisma/config -> effect -> fast-check and more transitive
-# deps. Copying the full node_modules ensures 'node node_modules/prisma/build/index.js'
-# in the entrypoint always has everything it needs, regardless of Prisma version.
-# The standalone Next.js bundle already contains all app runtime deps separately.
 COPY --from=builder /app/node_modules ./node_modules
 
 RUN mkdir -p public/uploads
