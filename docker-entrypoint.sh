@@ -10,10 +10,10 @@ echo "Running database migrations..."
 # Calling node directly against the real entry point avoids this entirely.
 # Use migrate deploy (not db push) because committed migrations exist.
 #
-# Prisma 7: prisma.config.ts is TypeScript and not compiled into the runner
-# stage, so prisma migrate deploy cannot read datasource.url from it.
-# Passing --url directly uses the DATABASE_URL env var from the container.
-node node_modules/prisma/build/index.js migrate deploy --url "$DATABASE_URL"
+# Prisma 7: prisma.config.ts is TypeScript and cannot be loaded in the runner.
+# prisma.config.js is a pre-compiled equivalent that reads DATABASE_URL from env.
+# We pass --config to point Prisma at it explicitly.
+node node_modules/prisma/build/index.js migrate deploy --config ./prisma.config.js
 
 echo "Starting server..."
 exec node server.js
