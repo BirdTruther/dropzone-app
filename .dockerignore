@@ -5,6 +5,7 @@ node_modules
 .env.*
 uploads
 *.md
+!CHANGELOG.md
 docker-compose.yml
 cosmos-compose.yaml
 .dockerignore
