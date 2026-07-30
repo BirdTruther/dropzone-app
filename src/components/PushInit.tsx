@@ -3,24 +3,6 @@ import { useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 
 /**
- * Convert a URL-safe base64 VAPID public key to a Uint8Array backed by a plain
- * ArrayBuffer. Uses new Uint8Array(buffer) so the .buffer property is always
- * ArrayBuffer (not SharedArrayBuffer), satisfying the BufferSource type that
- * PushManager.subscribe() expects under strict TypeScript.
- */
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = atob(base64);
-  const buffer = new ArrayBuffer(rawData.length);
-  const view = new Uint8Array(buffer);
-  for (let i = 0; i < rawData.length; i++) {
-    view[i] = rawData.charCodeAt(i);
-  }
-  return view;
-}
-
-/**
  * PushInit — mounts invisibly inside <Providers>.
  *
  * On first authenticated load it:
@@ -28,6 +10,10 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
  *   2. Checks whether a push subscription already exists for this device
  *   3. If not, calls PushManager.subscribe() and POSTs the result to
  *      /api/push/subscribe so the server can send VAPID pushes to this device
+ *
+ * Note: applicationServerKey accepts a string (base64url) directly — no
+ * Uint8Array conversion required. This avoids the ArrayBufferLike vs
+ * ArrayBuffer type incompatibility under strict TypeScript + es5 target.
  *
  * Requirements:
  *   - NEXT_PUBLIC_VAPID_PUBLIC_KEY must be set in the environment at build time
@@ -63,9 +49,12 @@ export default function PushInit() {
           if (result !== 'granted') return;
         }
 
+        // Pass the VAPID public key as a plain string — the PushManager API
+        // accepts base64url strings directly (same as Uint8Array), and this
+        // avoids the Uint8Array<ArrayBufferLike> type error under strict TS.
         const sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+          applicationServerKey: vapidKey,
         });
 
         if (cancelled) return;
