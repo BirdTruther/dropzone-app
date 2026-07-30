@@ -2,12 +2,15 @@
 import { useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 
-/** Convert a URL-safe base64 VAPID public key to a Uint8Array for PushManager.subscribe() */
+/**
+ * Convert a URL-safe base64 VAPID public key to a Uint8Array.
+ * Uses Array.from() instead of spread to stay compatible with tsconfig target: es5.
+ */
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+  return Uint8Array.from(Array.from(rawData).map((c) => c.charCodeAt(0)));
 }
 
 /**
@@ -43,10 +46,10 @@ export default function PushInit() {
     (async () => {
       try {
         // 1. Register the service worker (no-op if already registered)
-        const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        await navigator.serviceWorker.register('/sw.js', { scope: '/' });
 
         // Wait for the SW to be active before trying to subscribe
-        await navigator.serviceWorker.ready;
+        const reg = await navigator.serviceWorker.ready;
 
         if (cancelled) return;
 
