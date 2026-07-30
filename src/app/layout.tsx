@@ -4,6 +4,7 @@ import { Providers } from '@/components/Providers';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import BackToTop from '@/components/BackToTop';
+import PushInit from '@/components/PushInit';
 
 export const metadata: Metadata = {
   title: 'dropzone',
@@ -46,6 +47,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
         <Providers>
+          {/* Registers /sw.js and creates a push subscription for authenticated users */}
+          <PushInit />
           <Header />
           <main style={{ flex: 1 }}>{children}</main>
           <Footer />
