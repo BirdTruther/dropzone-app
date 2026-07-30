@@ -1,6 +1,12 @@
 # Changelog
 
-## v0.92 - July 1,2026
+## v0.93 - July 30, 2026 
+- Docker Image added
+- Full PWA support on IOS
+- Fully restored link sharing embedding
+- Possible correction to push notifications
+
+## v0.92 - July 1, 2026
 - Confirmed basic gif support 🎞️
 - Added Copy/Paste - no need to upload. 
 
