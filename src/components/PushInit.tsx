@@ -2,6 +2,13 @@
 import { useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
 /**
  * PushInit — mounts invisibly inside <Providers>.
  *
@@ -11,12 +18,9 @@ import { useSession } from 'next-auth/react';
  *   3. If not, calls PushManager.subscribe() and POSTs the result to
  *      /api/push/subscribe so the server can send VAPID pushes to this device
  *
- * Note: applicationServerKey accepts a string (base64url) directly — no
- * Uint8Array conversion required. This avoids the ArrayBufferLike vs
- * ArrayBuffer type incompatibility under strict TypeScript + es5 target.
- *
  * Requirements:
- *   - NEXT_PUBLIC_VAPID_PUBLIC_KEY must be set in the environment at build time
+ *   - NEXT_PUBLIC_VAPID_PUBLIC_KEY must be set as a Docker build-arg (ARG in Dockerfile)
+ *     AND passed via build-args in the GitHub Actions workflow.
  *   - The browser must support serviceWorker + PushManager (all modern browsers;
  *     iOS 16.4+ requires the app to be installed as a PWA / added to home screen)
  *   - The user must be signed in (checked via useSession)
@@ -26,46 +30,60 @@ export default function PushInit() {
 
   useEffect(() => {
     if (status !== 'authenticated' || !session?.user) return;
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.log('[PushInit] serviceWorker or PushManager not supported');
+      return;
+    }
 
     const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-    if (!vapidKey) return;
+    if (!vapidKey) {
+      console.error('[PushInit] NEXT_PUBLIC_VAPID_PUBLIC_KEY is undefined — was it set as a Docker build-arg?');
+      return;
+    }
+    console.log('[PushInit] VAPID key present, starting registration…');
 
     let cancelled = false;
 
     (async () => {
       try {
         await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-        const reg = await navigator.serviceWorker.ready;
+        console.log('[PushInit] SW registered');
 
+        const reg = await navigator.serviceWorker.ready;
+        console.log('[PushInit] SW ready');
         if (cancelled) return;
 
         const existing = await reg.pushManager.getSubscription();
-        if (existing) return;
+        if (existing) {
+          console.log('[PushInit] Existing subscription found, skipping');
+          return;
+        }
 
-        if (Notification.permission === 'denied') return;
+        if (Notification.permission === 'denied') {
+          console.log('[PushInit] Notification permission denied');
+          return;
+        }
         if (Notification.permission === 'default') {
           const result = await Notification.requestPermission();
+          console.log('[PushInit] Permission result:', result);
           if (result !== 'granted') return;
         }
 
-        // Pass the VAPID public key as a plain string — the PushManager API
-        // accepts base64url strings directly (same as Uint8Array), and this
-        // avoids the Uint8Array<ArrayBufferLike> type error under strict TS.
         const sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: vapidKey,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
         });
-
+        console.log('[PushInit] Subscribed:', sub.endpoint);
         if (cancelled) return;
 
-        await fetch('/api/push/subscribe', {
+        const res = await fetch('/api/push/subscribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(sub.toJSON()),
         });
-      } catch {
-        // non-fatal
+        console.log('[PushInit] POST /api/push/subscribe →', res.status);
+      } catch (err) {
+        console.error('[PushInit] Error during push setup:', err);
       }
     })();
 

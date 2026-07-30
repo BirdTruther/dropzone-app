@@ -11,6 +11,11 @@ COPY . .
 # The real value is injected at container runtime via the compose environment.
 ARG DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy
 ENV DATABASE_URL=$DATABASE_URL
+# NEXT_PUBLIC_VAPID_PUBLIC_KEY must be passed as a build-arg so Next.js can
+# inline it into the client bundle at build time. Pass via --build-arg or
+# the build-args field in the GitHub Actions workflow.
+ARG NEXT_PUBLIC_VAPID_PUBLIC_KEY
+ENV NEXT_PUBLIC_VAPID_PUBLIC_KEY=$NEXT_PUBLIC_VAPID_PUBLIC_KEY
 RUN node node_modules/prisma/build/index.js generate && npm run build
 
 FROM node:20-alpine AS jxrlib
