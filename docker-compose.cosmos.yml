@@ -9,7 +9,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: dropzone
-      POSTGRES_PASSWORD: dropzone_pass
+      POSTGRES_PASSWORD: CHANGE_ME_DB_PASSWORD
       POSTGRES_DB: dropzone
     volumes:
       - pg_data:/var/lib/postgresql/data
@@ -29,7 +29,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
-      DATABASE_URL: postgresql://dropzone:dropzone_pass@dropzone-db:5432/dropzone
+      DATABASE_URL: postgresql://dropzone:CHANGE_ME_DB_PASSWORD@dropzone-db:5432/dropzone
       NEXTAUTH_URL: https://your.domain.here
       NEXTAUTH_SECRET: your-nextauth-secret
       NEXT_PUBLIC_VAPID_PUBLIC_KEY: your-vapid-public-key
