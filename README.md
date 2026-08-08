@@ -84,7 +84,7 @@ Accessible at `/admin` by any user with `isSiteAdmin = true`.
 
 ### Cosmos Cloud (Recommended)
 
-Dropzone is designed to run under [Cosmos Cloud](https://cosmos-cloud.io) with automatic updates. The `cosmos-compose.yaml` in this repo is the canonical deployment file for this setup.
+Dropzone is designed to run under [Cosmos Cloud](https://cosmos-cloud.io) with automatic updates. The `docker-compose.cosmos.yml` in this repo is the canonical deployment file for this setup.
 
 #### 1. Prerequisites
 - Cosmos Cloud installed and running
@@ -122,7 +122,7 @@ VAPID_MAILTO=mailto:you@example.com
 
 #### 4. Add to Cosmos
 
-In the Cosmos dashboard, add a new app using `cosmos-compose.yaml` from this repo. Cosmos will:
+In the Cosmos dashboard, add a new app using `docker-compose.cosmos.yml` from this repo. Cosmos will:
 - Pull `ghcr.io/birdtruther/dropzone-app:latest` from GitHub Container Registry
 - Start the app and database containers
 - Apply database migrations automatically on first boot
@@ -151,7 +151,17 @@ mkdir -p uploads
 
 This folder is bind-mounted into the container at `/app/public/uploads` and persists across all restarts and rebuilds.
 
-#### 3. Run
+#### 3. Create the database volume
+
+`docker-compose.yml` uses an external named volume for PostgreSQL data. Create it once before first start:
+
+```bash
+docker volume create dropzone-app_pg_data
+```
+
+> ⚠️ This volume holds your database. Never delete it, or you lose all users, groups, and posts.
+
+#### 4. Run
 
 ```bash
 docker compose up -d
@@ -176,7 +186,7 @@ docker compose up --build -d
 
 ## How Updates Work
 
-Every push to `main` triggers a GitHub Actions workflow (`.github/workflows/docker-publish.yml`) that builds and publishes a fresh image to `ghcr.io/birdtruther/dropzone-app:latest`.
+Every push to `main` that changes application code triggers a GitHub Actions workflow (`.github/workflows/docker-publish.yml`) that builds and publishes a fresh image to `ghcr.io/birdtruther/dropzone-app:latest`.
 
 ### Cosmos Cloud
 No manual action needed. Cosmos detects the new image digest on its 6-hour check cycle and automatically pulls and restarts the container.
@@ -188,7 +198,7 @@ docker compose pull app
 docker compose up -d
 ```
 
-The container runs `npx prisma db push` on every startup via `docker-entrypoint.sh`, so any schema changes are applied before the app serves traffic.
+The container runs database migrations (`prisma migrate deploy`) on every startup via `docker-entrypoint.sh`, so any schema changes are applied before the app serves traffic.
 
 ---
 
@@ -256,15 +266,12 @@ Dropzone downloads and serves Facebook videos natively using `yt-dlp` and `ffmpe
 Windows saves HDR screenshots as `.jxr` (JPEG XR) files. Dropzone converts them automatically on upload.
 
 - `.jxr` files are detected by their file extension on upload
-- `ffmpeg` converts them to PNG via:
-  ```
-  ffmpeg -i input.jxr -vf scale=iw:ih output.png
-  ```
-- The converted PNG is stored and served like any other uploaded image — the original `.jxr` is discarded
-- No additional dependencies required — ffmpeg's native JPEG XR decoder handles it
-- Conversion logic lives in `src/lib/convertJxr.ts`
-
-> ⚠️ Do **not** use ImageMagick for `.jxr` conversion. ImageMagick's TIFF decoder rejects JXR files (magic bytes `0x1bc` are misread as a bad TIFF version), causing a fatal `bad version number 444` error. ffmpeg is the correct tool.
+- Conversion is a two-step pipeline:
+  1. `JxrDecApp` (compiled from [jxrlib](https://github.com/4creators/jxrlib) in the Dockerfile) decodes the raw JPEG XR file into an intermediate TIFF
+  2. `magick` (ImageMagick) flattens the TIFF to PNG
+- The converted PNG is stored and served like any other uploaded image — the original `.jxr` and the intermediate TIFF are discarded
+- ffmpeg is **not** used for this — Alpine's ffmpeg build has no JPEG XR decoder. `JxrDecApp` and ImageMagick are both pre-installed in the Docker image
+- Conversion logic lives in `src/app/api/groups/[id]/upload/route.ts`
 
 ---
 
@@ -350,7 +357,6 @@ src/
     PushNotificationToggle.tsx  # Enable/disable push per device
     UploadedVideo.tsx           # Video upload progress + playback component
   lib/
-    convertJxr.ts               # JPEG XR → PNG conversion via ffmpeg
     embed.ts                    # URL → embed type detection
     timeAgo.ts                  # Relative timestamp utility
     notifications.ts            # createNotification() — saves to DB + fires push
@@ -360,10 +366,10 @@ prisma/
   schema.prisma                 # Database schema
 .github/
   workflows/
-    docker-publish.yml          # CI/CD — builds and pushes to ghcr.io on every push to main
+    docker-publish.yml          # CI/CD — builds and pushes to ghcr.io on code changes to main
 docker-compose.yml              # Generic Docker Compose (pulls pre-built image from ghcr.io)
-cosmos-compose.yaml             # Cosmos Cloud deployment (auto-update enabled)
-docker-entrypoint.sh            # Runs prisma db push on startup, then starts the server
+docker-compose.cosmos.yml       # Cosmos Cloud deployment (auto-update enabled)
+docker-entrypoint.sh            # Runs database migrations on startup, then starts the server
 Dockerfile                      # Multi-stage build (deps → builder → jxrlib → runner)
 ```
 

@@ -152,7 +152,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   console.log(`[upload] file.name=${file.name} file.type=${file.type} file.size=${file.size} isAdmin=${isAdmin}`);
 
   if (!isAdmin && file.size > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: 'File too large (max 300MB)' }, { status: 400 });
+    return NextResponse.json({ error: 'File too large (max 100MB)' }, { status: 400 });
   }
 
   const isVideo = ALLOWED_VIDEO.includes(file.type);

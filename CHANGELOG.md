@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.95 - August 7, 2026 
+- Fixed comments — threads load and posting works again
+- Fixed notifications — comment and reaction alerts now arrive as expected
+
 ## v0.93 - July 30, 2026 
 - Docker Image added
 - Full PWA support on IOS
