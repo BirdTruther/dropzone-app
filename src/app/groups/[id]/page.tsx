@@ -27,10 +27,17 @@ interface Member { id: string; name: string; avatar?: string; email: string; rol
 const REACTION_OPTIONS = ['❤️', '😂', '🔥', '👀', '😮', '👍'];
 const EMOJI_OPTIONS = ['🔗','🎮','🎵','🎬','📚','💡','🏆','🌍','🍕','😂','🔥','💬','📸','🎨','⚽','🐦','🚀','🛠️','💎','🌙'];
 
-const ALLOWED_IMAGE_TYPES = new Set([
+const ALLOWED_UPLOAD_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
   'image/jxr', 'image/vnd.ms-photo',
+  'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo',
+  'video/x-matroska', 'video/mpeg', 'video/3gpp',
 ]);
+
+function extFor(mime: string): string {
+  if (mime === 'image/vnd.ms-photo') return 'jxr';
+  return mime.split('/')[1] ?? 'bin';
+}
 
 function avatarColor(name: string) {
   const colors = ['#5b6af7','#e05c9a','#f97316','#22c55e','#06b6d4','#a855f7','#eab308','#ef4444'];
@@ -115,6 +122,8 @@ export default function GroupPage() {
   const [sharedId, setSharedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pasteToast, setPasteToast] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepthRef = useRef(0);
 
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [reactionPopupPostId, setReactionPopupPostId] = useState<string | null>(null);
@@ -162,33 +171,68 @@ export default function GroupPage() {
   // ── Clipboard paste handler ──────────────────────────────────────────────
   useEffect(() => {
     function handlePaste(e: ClipboardEvent) {
-      // Ignore paste events that originate inside text inputs / textareas
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-
       const items = e.clipboardData?.items;
       if (!items) return;
 
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
-        if (item.kind === 'file' && ALLOWED_IMAGE_TYPES.has(item.type)) {
-          const file = item.getAsFile();
-          if (!file) continue;
-          // Give the pasted blob a sensible filename based on its MIME type
-          const ext = item.type.split('/')[1].replace('vnd.ms-photo', 'jxr');
-          const namedFile = new File([file], `pasted-image.${ext}`, { type: item.type });
-          setUploadFile(namedFile);
-          setPasteToast(`📋 Image pasted! (${(namedFile.size / 1024).toFixed(0)} KB)`);
-          setTimeout(() => setPasteToast(null), 3000);
-          e.preventDefault();
-          break;
-        }
+        if (item.kind !== 'file') continue;
+        const file = item.getAsFile();
+        if (!file || !ALLOWED_UPLOAD_TYPES.has(file.type)) continue;
+
+        // A file can't be inserted into a text field, so grab it even when
+        // focus is inside an input — text paste is never hijacked.
+        const isVideo = file.type.startsWith('video');
+        const namedFile = new File([file], `pasted-${isVideo ? 'video' : 'image'}.${extFor(file.type)}`, { type: file.type });
+        setUploadFile(namedFile);
+        setPasteToast(`📋 ${isVideo ? 'Video' : 'Image'} pasted! (${(namedFile.size / 1024).toFixed(0)} KB)`);
+        setTimeout(() => setPasteToast(null), 3000);
+        e.preventDefault();
+        break;
       }
     }
 
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
   }, []);
+  // ────────────────────────────────────────────────────────────────────────
+
+  // ── Drag & drop handler ─────────────────────────────────────────────────
+  function handleDragEnter(e: React.DragEvent) {
+    if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragOver(true);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragOver(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files ?? []);
+    const file = files.find(f => ALLOWED_UPLOAD_TYPES.has(f.type));
+    if (file) {
+      const isVideo = file.type.startsWith('video');
+      setUploadFile(file);
+      setPasteToast(`📎 ${isVideo ? 'Video' : 'Image'} dropped! (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+      setTimeout(() => setPasteToast(null), 3000);
+    } else if (files.length > 0) {
+      setPasteToast('⚠️ Unsupported file type');
+      setTimeout(() => setPasteToast(null), 3000);
+    }
+  }
   // ────────────────────────────────────────────────────────────────────────
 
   function openEdit() {
@@ -391,7 +435,22 @@ export default function GroupPage() {
 
   return (
     <PullToRefresh onRefresh={loadPosts}>
-    <div style={{ maxWidth: 700, margin: '0 auto', padding: '1rem' }}>
+    <div style={{ maxWidth: 700, margin: '0 auto', padding: '1rem' }}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}>
+
+      {/* Drag & drop overlay */}
+      {dragOver && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(3px)', pointerEvents: 'none' }}>
+          <div className="card" style={{ padding: '2rem 3rem', textAlign: 'center', border: '2px dashed var(--color-accent, #5b6af7)' }}>
+            <p style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📎</p>
+            <p style={{ fontWeight: 700, fontSize: '1rem' }}>Drop to upload</p>
+            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Images &amp; video</p>
+          </div>
+        </div>
+      )}
 
       {/* Paste toast notification */}
       {pasteToast && (
@@ -593,7 +652,7 @@ export default function GroupPage() {
         {/* Paste hint — shown only when composer is idle */}
         {!uploadFile && !uploading && (
           <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', margin: 0 }}>
-            💡 Tip: press <kbd style={{ fontFamily: 'monospace', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 3, padding: '0 3px', fontSize: '0.7rem' }}>Ctrl+V</kbd> anywhere on the page to paste an image directly.
+            💡 Tip: drag &amp; drop a file anywhere on the page, or press <kbd style={{ fontFamily: 'monospace', background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', borderRadius: 3, padding: '0 3px', fontSize: '0.7rem' }}>Ctrl+V</kbd> to paste an image or video.
           </p>
         )}
 
