@@ -21,7 +21,7 @@ interface Post {
   expiresAt?: string; createdAt: string; author: Author; reactions: Reaction[];
   _count?: { comments: number };
 }
-interface GroupData { id: string; name: string; emoji: string; inviteCode: string; description?: string; role?: string; openInvite?: boolean; }
+interface GroupData { id: string; name: string; emoji: string; inviteCode: string; description?: string; role?: string; openInvite?: boolean; isPublic?: boolean; }
 interface Member { id: string; name: string; avatar?: string; email: string; role: string; joinedAt: string; }
 
 const REACTION_OPTIONS = ['❤️', '😂', '🔥', '👀', '😮', '👍'];
@@ -123,6 +123,7 @@ export default function GroupPage() {
   const [editEmoji, setEditEmoji] = useState('');
   const [editDesc, setEditDesc] = useState('');
   const [editOpenInvite, setEditOpenInvite] = useState(false);
+  const [editIsPublic, setEditIsPublic] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [editMsg, setEditMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
@@ -130,6 +131,10 @@ export default function GroupPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [removingMember, setRemovingMember] = useState<string | null>(null);
+  const [addQuery, setAddQuery] = useState('');
+  const [addResults, setAddResults] = useState<{ id: string; name: string; avatar?: string }[]>([]);
+  const [addLoading, setAddLoading] = useState(false);
+  const [addingMember, setAddingMember] = useState<string | null>(null);
 
   const loadPosts = useCallback(async () => {
     const res = await fetch(`/api/groups/${groupId}/posts`);
@@ -189,6 +194,7 @@ export default function GroupPage() {
     if (!group) return;
     setEditName(group.name); setEditEmoji(group.emoji);
     setEditDesc(group.description ?? ''); setEditOpenInvite(group.openInvite ?? false);
+    setEditIsPublic(group.isPublic ?? false);
     setEditMsg(null); setShowEdit(true);
   }
 
@@ -196,11 +202,11 @@ export default function GroupPage() {
     e.preventDefault(); setEditLoading(true); setEditMsg(null);
     const res = await fetch(`/api/groups/${groupId}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: editName, emoji: editEmoji, description: editDesc, openInvite: editOpenInvite }),
+      body: JSON.stringify({ name: editName, emoji: editEmoji, description: editDesc, openInvite: editOpenInvite, isPublic: editIsPublic }),
     });
     const data = await res.json(); setEditLoading(false);
     if (!res.ok) return setEditMsg({ type: 'err', text: data.error ?? 'Something went wrong' });
-    setGroup(prev => prev ? { ...prev, name: data.name, emoji: data.emoji, description: data.description, openInvite: data.openInvite } : prev);
+    setGroup(prev => prev ? { ...prev, name: data.name, emoji: data.emoji, description: data.description, openInvite: data.openInvite, isPublic: data.isPublic } : prev);
     setEditMsg({ type: 'ok', text: 'Group updated!' });
     setTimeout(() => setShowEdit(false), 800);
   }
@@ -222,6 +228,32 @@ export default function GroupPage() {
     });
     if (res.ok) setMembers(prev => prev.filter(m => m.id !== targetId));
     setRemovingMember(null);
+  }
+
+  async function searchUsers(q: string) {
+    setAddQuery(q);
+    if (!q.trim()) { setAddResults([]); return; }
+    setAddLoading(true);
+    const res = await fetch(`/api/groups/${groupId}/invite?q=${encodeURIComponent(q.trim())}`);
+    if (res.ok) setAddResults(await res.json());
+    setAddLoading(false);
+  }
+
+  async function addMember(targetId: string) {
+    setAddingMember(targetId);
+    const res = await fetch(`/api/groups/${groupId}/members`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetUserId: targetId }),
+    });
+    if (res.ok) {
+      setAddQuery('');
+      setAddResults([]);
+      setMembersLoading(true);
+      const mres = await fetch(`/api/groups/${groupId}/members`);
+      if (mres.ok) setMembers(await mres.json());
+      setMembersLoading(false);
+    }
+    setAddingMember(null);
   }
 
   async function submitPost(e: React.FormEvent) {
@@ -335,7 +367,11 @@ export default function GroupPage() {
   }
 
   function copyInvite() {
-    if (group) { navigator.clipboard.writeText(group.inviteCode); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    if (group) {
+      navigator.clipboard.writeText(`${window.location.origin}/join/${group.inviteCode}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   }
 
   if (status === 'loading' || !group) return <div style={{ padding: '2rem', color: 'var(--color-text-muted)' }}>Loading...</div>;
@@ -406,6 +442,13 @@ export default function GroupPage() {
                   <span>Allow any member to invite others</span>
                 </label>
               )}
+              {isOwner && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', fontSize: '0.875rem' }}>
+                  <input type="checkbox" checked={editIsPublic} onChange={e => setEditIsPublic(e.target.checked)}
+                    style={{ width: 16, height: 16, accentColor: 'var(--color-accent, #5b6af7)', cursor: 'pointer' }} />
+                  <span>Public group — any member can find and join it</span>
+                </label>
+              )}
               {editMsg && (
                 <div style={{ padding: '0.6rem 0.9rem', borderRadius: 'var(--radius-sm)', fontSize: '0.875rem', background: editMsg.type === 'ok' ? 'rgba(91,106,247,0.12)' : 'rgba(224,92,92,0.12)', color: editMsg.type === 'ok' ? 'var(--color-accent)' : 'var(--color-danger)' }}>
                   {editMsg.text}
@@ -456,6 +499,37 @@ export default function GroupPage() {
                   )}
                 </div>
               ))}
+              {canEdit && (
+                <div style={{ borderTop: '1px solid var(--color-border)', marginTop: '0.5rem', paddingTop: '0.75rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '0.4rem' }}>Add a member by name</label>
+                  <input
+                    placeholder="Search users…"
+                    value={addQuery}
+                    onChange={e => searchUsers(e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                  {addLoading && <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.5rem' }}>Searching…</p>}
+                  {addResults.length > 0 && (
+                    <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {addResults.map(u => (
+                        <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.35rem 0.5rem', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-2)' }}>
+                          {u.avatar
+                            ? <img src={u.avatar} alt={u.name} style={{ width: 26, height: 26, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                            : <div style={{ width: 26, height: 26, borderRadius: '50%', background: avatarColor(u.name), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>{u.name[0].toUpperCase()}</div>
+                          }
+                          <span style={{ flex: 1, fontSize: '0.875rem' }}>{u.name}</span>
+                          <button className="btn btn-ghost" onClick={() => addMember(u.id)} disabled={addingMember === u.id} style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem' }}>
+                            {addingMember === u.id ? '...' : 'Add'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!addLoading && addQuery.trim() && addResults.length === 0 && (
+                    <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.5rem' }}>No matches — everyone who can be added is already here.</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

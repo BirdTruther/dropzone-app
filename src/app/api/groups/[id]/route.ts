@@ -23,9 +23,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (body.name?.trim()) updates.name = body.name.trim();
   if (body.emoji?.trim()) updates.emoji = body.emoji.trim();
   if (body.description !== undefined) updates.description = body.description.trim();
-  // Only owner can toggle openInvite
+  // Only owner can toggle openInvite / isPublic
   if (body.openInvite !== undefined && membership.role === 'owner') {
     updates.openInvite = Boolean(body.openInvite);
+  }
+  if (body.isPublic !== undefined && membership.role === 'owner') {
+    updates.isPublic = Boolean(body.isPublic);
   }
 
   const updated = await prisma.group.update({ where: { id: params.id }, data: updates });

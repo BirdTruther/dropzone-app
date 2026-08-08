@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 interface Group { id: string; name: string; description?: string; emoji: string; inviteCode: string; role: string; _count: { members: number; posts: number }; }
+interface PublicGroup { id: string; name: string; description?: string; emoji: string; _count: { members: number; posts: number }; }
 
 export default function GroupsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [groups, setGroups] = useState<Group[]>([]);
+  const [publicGroups, setPublicGroups] = useState<PublicGroup[]>([]);
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [modalTab, setModalTab] = useState<'choose' | 'create' | 'join'>('choose');
   const [form, setForm] = useState({ name: '', description: '', emoji: '🔗' });
@@ -18,6 +20,7 @@ export default function GroupsPage() {
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/login'); }, [status, router]);
   useEffect(() => { if (status === 'authenticated') fetch('/api/groups').then(r => r.json()).then(setGroups); }, [status]);
+  useEffect(() => { if (status === 'authenticated') fetch('/api/groups/public').then(r => r.json()).then(setPublicGroups); }, [status]);
 
   function openModal() { setModalTab('choose'); setShowGroupModal(true); }
   function closeModal() { setShowGroupModal(false); setForm({ name: '', description: '', emoji: '🔗' }); setInviteCode(''); }
@@ -38,6 +41,15 @@ export default function GroupsPage() {
     const res = await fetch('/api/groups/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inviteCode }) });
     if (res.ok) {
       const g = await res.json();
+      router.push(`/groups/${g.id}`);
+    }
+    setLoading(false);
+  }
+
+  async function joinPublic(g: PublicGroup) {
+    setLoading(true);
+    const res = await fetch('/api/groups/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publicGroupId: g.id }) });
+    if (res.ok) {
       router.push(`/groups/${g.id}`);
     }
     setLoading(false);
@@ -84,6 +96,30 @@ export default function GroupsPage() {
             </Link>
           ))}
         </div>
+      )}
+
+      {/* Discover public groups */}
+      {publicGroups.length > 0 && (
+        <>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, marginTop: '2rem', marginBottom: '0.75rem' }}>🌐 Discover public groups</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {publicGroups.map(g => (
+              <div key={g.id} className="card" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '1.75rem' }}>{g.emoji}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>{g.name}</div>
+                  {g.description && <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.description}</div>}
+                  <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                    {g._count.members} member{g._count.members !== 1 ? 's' : ''} · {g._count.posts} post{g._count.posts !== 1 ? 's' : ''}
+                  </div>
+                </div>
+                <button className="btn btn-primary" onClick={() => joinPublic(g)} disabled={loading} style={{ fontSize: '0.8rem', flexShrink: 0 }}>
+                  Join
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Group modal */}

@@ -43,6 +43,7 @@ model Group {
   emoji       String    @default("🔗")
   inviteCode  String    @unique @default(cuid())
   openInvite  Boolean   @default(false)
+  isPublic    Boolean   @default(false)
   createdAt   DateTime  @default(now())
 
   members     GroupMember[]
