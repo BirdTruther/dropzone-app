@@ -21,7 +21,7 @@ interface Post {
   expiresAt?: string; createdAt: string; author: Author; reactions: Reaction[];
   _count?: { comments: number };
 }
-interface GroupData { id: string; name: string; emoji: string; inviteCode: string; description?: string; role?: string; openInvite?: boolean; isPublic?: boolean; }
+interface GroupData { id: string; name: string; emoji: string; inviteCode: string; joinCode?: string; description?: string; role?: string; openInvite?: boolean; isPublic?: boolean; }
 interface Member { id: string; name: string; avatar?: string; email: string; role: string; joinedAt: string; }
 
 const REACTION_OPTIONS = ['❤️', '😂', '🔥', '👀', '😮', '👍'];
@@ -106,6 +106,7 @@ export default function GroupPage() {
   const [note, setNote] = useState('');
   const [posting, setPosting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -374,6 +375,14 @@ export default function GroupPage() {
     }
   }
 
+  function copyCode() {
+    if (group?.joinCode) {
+      navigator.clipboard.writeText(group.joinCode);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    }
+  }
+
   if (status === 'loading' || !group) return <div style={{ padding: '2rem', color: 'var(--color-text-muted)' }}>Loading...</div>;
 
   const isOwner = group.role === 'owner';
@@ -547,7 +556,13 @@ export default function GroupPage() {
           {canEdit && <button className="btn btn-ghost" onClick={openEdit} style={{ fontSize: '0.8rem' }}>⚙️ Edit</button>}
           <button className="btn btn-ghost" onClick={openMembers} style={{ fontSize: '0.8rem' }}>👥 Members</button>
           {canInvite && (
-            <button className="btn btn-ghost" onClick={copyInvite} style={{ fontSize: '0.8rem' }}>{copied ? '✅ Copied!' : '🔗 Invite'}</button>
+            <>
+              <button className="btn btn-ghost" onClick={copyInvite} style={{ fontSize: '0.8rem' }}>{copied ? '✅ Link!' : '🔗 Invite'}</button>
+              <button className="btn btn-ghost" onClick={copyCode} title="Copy short invite code"
+                style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                {copiedCode ? '✅ Code!' : (group.joinCode ?? '🔑 Code')}
+              </button>
+            </>
           )}
         </div>
       </div>

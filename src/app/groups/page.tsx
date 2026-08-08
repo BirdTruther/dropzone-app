@@ -199,9 +199,9 @@ export default function GroupsPage() {
                   ← Back
                 </button>
                 <h2 style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.35rem' }}>🔗 Join a Group</h2>
-                <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '1.25rem' }}>Paste the invite code someone shared with you.</p>
+                <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '1.25rem' }}>Paste the invite code or link someone shared with you.</p>
                 <form onSubmit={joinGroup} style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-                  <input placeholder="Invite code" value={inviteCode} onChange={e => setInviteCode(e.target.value)} required autoFocus />
+                  <input placeholder="Invite code or link" value={inviteCode} onChange={e => setInviteCode(e.target.value)} required autoFocus />
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                     <button type="button" className="btn btn-ghost" onClick={closeModal}>Cancel</button>
                     <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? 'Joining...' : 'Join'}</button>

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.96 - August 7, 2026 
+- Group invite links — share one link and friends join with a single tap
+- Add members by name — group owners and admins can add people directly
+- Public groups — browse and join open groups from the Groups page
+- Short invite codes — easy to type when joining from another device
+
 ## v0.95 - August 7, 2026 
 - Fixed comments — threads load and posting works again
 - Fixed notifications — comment and reaction alerts now arrive as expected

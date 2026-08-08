@@ -15,7 +15,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Group not found' }, { status: 404 });
     }
   } else if (inviteCode) {
-    group = await prisma.group.findUnique({ where: { inviteCode } });
+    let code = String(inviteCode).trim();
+    // Accept a pasted full invite link (https://host/join/CODE) too
+    const linkMatch = code.match(/\/join\/([A-Za-z0-9]+)/);
+    if (linkMatch) code = linkMatch[1];
+    group = await prisma.group.findFirst({ where: { OR: [{ inviteCode: code }, { joinCode: code }] } });
     if (!group) return NextResponse.json({ error: 'Invalid invite code' }, { status: 404 });
   } else {
     return NextResponse.json({ error: 'Missing invite code' }, { status: 400 });
