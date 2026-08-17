@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { fetchLinkPreview } from '@/lib/og';
-import { createNotification } from '@/lib/notifications';
+import { notifyGroupMembers } from '@/lib/notifications';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -51,25 +51,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   });
 
   // Notify all other group members about the new post
-  const group = await prisma.group.findUnique({ where: { id: params.id }, select: { name: true, emoji: true } });
-  const allMembers = await prisma.groupMember.findMany({
-    where: { groupId: params.id, userId: { not: session.user.id } },
-    select: { userId: true },
-  });
-  const poster = await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true, avatar: true } });
   const postTitle = preview.title ? `"${preview.title.slice(0, 40)}${preview.title.length > 40 ? '…' : ''}"` : 'a link';
-  await Promise.all(
-    allMembers.map(m =>
-      createNotification({
-        userId: m.userId,
-        type: 'new_post',
-        message: `${poster?.name ?? 'Someone'} dropped ${postTitle} in ${group?.emoji ?? ''} ${group?.name ?? 'a group'}`,
-        link: `/groups/${params.id}`,
-        actorName: poster?.name ?? undefined,
-        actorAvatar: poster?.avatar ?? undefined,
-      })
-    )
-  );
+  notifyGroupMembers({
+    groupId: params.id,
+    actorId: session.user.id,
+    type: 'new_post',
+    message: `dropped ${postTitle}`,
+  }).catch(() => {});
 
   return NextResponse.json(post, { status: 201 });
 }

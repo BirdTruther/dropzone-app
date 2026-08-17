@@ -1,9 +1,41 @@
 import { prisma } from '@/lib/prisma';
 import { sendPushToUser } from '@/lib/sendPush';
 
+export async function notifyGroupMembers({
+  groupId,
+  actorId,
+  type,
+  message,
+}: {
+  groupId: string;
+  actorId: string;
+  type: string;
+  message: string;
+}) {
+  const group = await prisma.group.findUnique({ where: { id: groupId }, select: { name: true, emoji: true } });
+  const allMembers = await prisma.groupMember.findMany({
+    where: { groupId, userId: { not: actorId } },
+    select: { userId: true },
+  });
+  const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { name: true, avatar: true } });
+
+  await Promise.all(
+    allMembers.map(m =>
+      createNotification({
+        userId: m.userId,
+        type,
+        message: `${actor?.name ?? 'Someone'} ${message} in ${group?.emoji ?? ''} ${group?.name ?? 'a group'}`,
+        link: `/groups/${groupId}`,
+        actorName: actor?.name ?? undefined,
+        actorAvatar: actor?.avatar ?? undefined,
+      })
+    )
+  );
+}
+
 // Map notification type to the User preference field names
 const PREF_MAP: Record<string, { inApp: string; push: string }> = {
-  drop:     { inApp: 'notifyInAppNewDrop',  push: 'notifyPushNewDrop' },
+  new_post: { inApp: 'notifyInAppNewDrop',  push: 'notifyPushNewDrop' },
   reaction: { inApp: 'notifyInAppReaction', push: 'notifyPushReaction' },
   comment:  { inApp: 'notifyInAppComment',  push: 'notifyPushComment' },
   mention:  { inApp: 'notifyInAppMention',  push: 'notifyPushMention' },

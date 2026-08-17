@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { MAX_FILE_SIZE, MAX_VOLUME_SIZE, getUploadsSize } from '@/lib/storage';
+import { notifyGroupMembers } from '@/lib/notifications';
 
 const execFileAsync = promisify(execFile);
 
@@ -215,6 +216,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         },
         include: { author: { select: { id: true, name: true, avatar: true } }, reactions: true },
       });
+      notifyGroupMembers({
+        groupId: params.id,
+        actorId: user.id,
+        type: 'new_post',
+        message: 'uploaded an image',
+      }).catch(() => {});
       return NextResponse.json(post, { status: 201 });
     }
 
@@ -236,6 +243,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       },
       include: { author: { select: { id: true, name: true, avatar: true } }, reactions: true },
     });
+    notifyGroupMembers({
+      groupId: params.id,
+      actorId: user.id,
+      type: 'new_post',
+      message: 'uploaded an image',
+    }).catch(() => {});
     return NextResponse.json(post, { status: 201 });
   }
 
@@ -260,6 +273,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     },
     include: { author: { select: { id: true, name: true, avatar: true } }, reactions: true },
   });
+  notifyGroupMembers({
+    groupId: params.id,
+    actorId: user.id,
+    type: 'new_post',
+    message: 'uploaded a video',
+  }).catch(() => {});
 
   const postId = post.id;
   setImmediate(async () => {

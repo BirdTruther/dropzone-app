@@ -45,6 +45,7 @@ export async function sendPushToUser(
         ) {
           const { statusCode } = err as { statusCode: number };
           if (statusCode === 410 || statusCode === 404) {
+            console.log(`[sendPush] Cleaning up stale subscription (HTTP ${statusCode}) for user ${userId}, endpoint: ${sub.endpoint.slice(0, 40)}…`);
             await prisma.pushSubscription.deleteMany({
               where: { endpoint: sub.endpoint },
             });
