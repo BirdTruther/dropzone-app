@@ -1,6 +1,10 @@
-# dropzone
+<p align="center">
+  <img src="public/android-chrome-512x512.png" alt="Dropzone logo" width="120">
+</p>
 
-A private group link-sharing web app. Share links, videos, and images with friends — get rich previews, react to posts, comment on drops, and keep your feed alive indefinitely.
+<h1 align="center">dropzone</h1>
+
+<p align="center">A private group link-sharing web app. Share links, videos, and images with friends — get rich previews, react to posts, comment on drops, and keep your feed alive indefinitely.</p>
 
 ---
 
@@ -51,7 +55,8 @@ A private group link-sharing web app. Share links, videos, and images with frien
 - 🔗 Share links — generate a public preview URL for any post that embeds in Discord and iMessage
 - ❤️ Emoji reactions on posts
 - 💬 Threaded comments with delete support
-- 👥 Private invite-only groups
+- 🔓 Open signup — anyone with the URL can create an account, no invite code required to sign up
+- 👥 Groups are private and invite-only — a new account starts in no groups until invited or added
 - 🚪 Leave a group anytime — ownership hands off automatically, or the group is removed if you're the last one in it
 - 📱 PWA — installable on iOS and Android
 - 🔔 Push notifications — alerts for new drops and reactions even when the app is closed
