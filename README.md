@@ -52,6 +52,7 @@ A private group link-sharing web app. Share links, videos, and images with frien
 - ❤️ Emoji reactions on posts
 - 💬 Threaded comments with delete support
 - 👥 Private invite-only groups
+- 🚪 Leave a group anytime — ownership hands off automatically, or the group is removed if you're the last one in it
 - 📱 PWA — installable on iOS and Android
 - 🔔 Push notifications — alerts for new drops and reactions even when the app is closed
 - 🌙 Dark mode
@@ -216,6 +217,7 @@ All configuration is handled via environment variables. Copy `.env.example` to `
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Optional | VAPID public key for push notifications |
 | `VAPID_PRIVATE_KEY` | Optional | VAPID private key for push notifications |
 | `VAPID_MAILTO` | Optional | Contact email for push notifications (e.g. `mailto:you@example.com`) |
+| `CLEANUP_SECRET` | Optional | Required only to use `GET /api/cleanup?secret=...` — a manual/cron endpoint that deletes posts past their `expiresAt`. The route refuses all requests until this is set; run `openssl rand -hex 24` |
 
 > Generate VAPID keys with: `npx web-push generate-vapid-keys`
 
@@ -389,13 +391,9 @@ This project is licensed under the [Business Source License 1.1](./LICENSE).
 
 ## AI Disclosure
 
-This project was built with significant assistance from AI tools, primarily **Perplexity AI** (powered by Claude). AI was used throughout development for:
+The concept, product direction, naming, and the Dropzone logo are mine (**BirdTruther**). I wrote an initial baseline version of the app myself, but it didn't work — from there, essentially all of the actual codebase (architecture, API routes, database schema, debugging, and ongoing feature work) has been built with AI doing the backend work:
 
-- Architecting and writing the majority of the codebase
-- Designing API routes, database schema, and component logic
-- Debugging and iterating on features
-- Writing configuration files (Dockerfile, docker-compose, Prisma schema)
-
-The ideas, product direction, and decisions behind Dropzone are original and owned by Christopher DeHart. AI served as a development tool, not a co-author of the concept.
+- Early development: **Perplexity AI**, using its Claude (Sonnet) access
+- Current development: **Claude Code**, Anthropic's CLI agent
 
 This disclosure is provided in the spirit of transparency as AI-assisted development becomes more common.
