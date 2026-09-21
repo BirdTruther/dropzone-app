@@ -214,6 +214,7 @@ All configuration is handled via environment variables. Copy `.env.example` to `
 
 | Variable | Required | Description |
 |---|---|---|
+| `POSTGRES_PASSWORD` | ✅ | Password for the `db` container — must match the password in `DATABASE_URL`. No default is shipped; `docker-compose.yml` refuses to start without it |
 | `DATABASE_URL` | ✅ | PostgreSQL connection string |
 | `NEXTAUTH_URL` | ✅ | Full `https://` domain (e.g. `https://link.yourserver.com`) |
 | `NEXTAUTH_SECRET` | ✅ | Random secret — run `openssl rand -base64 32` |
