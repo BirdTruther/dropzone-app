@@ -8,10 +8,19 @@
 
 <p align="center"><strong><a href="https://link.birdsserver.cfd">🔗 Try it live</a></strong>. Signup is free and open, no invite needed.</p>
 
+## Preview
+
+<p align="center">
+  <img src="docs/screenshots/spotify-reaction.png" width="260" alt="A Spotify track embedded in a group feed, with an emoji reaction">
+  <img src="docs/screenshots/link-preview-comment.png" width="260" alt="A GitHub link preview card with a comment underneath it">
+  <img src="docs/screenshots/youtube-embed.png" width="260" alt="A YouTube video embedded directly in the feed">
+</p>
+
 ---
 
 ## Table of Contents
 
+- [Preview](#preview)
 - [Stack](#stack)
 - [Features](#features)
 - [Admin Panel](#admin-panel)
