@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.97 - September 20, 2026
+- Leave Group — members can now leave a group themselves; an owner leaving hands ownership to the next-longest member, or deletes the group if they're the last one in it
+- Fixed a server error on video/media HEAD requests that was spamming logs and occasionally breaking Discord/iMessage link previews
+- Closed a hardcoded fallback secret on the internal cleanup endpoint
+- Removed a leftover JXR diagnostic endpoint
+
 ## v0.96 - August 7, 2026 
 - Group invite links — share one link and friends join with a single tap
 - Add members by name — group owners and admins can add people directly

@@ -19,10 +19,11 @@ const MIME: Record<string, string> = {
   '.webm': 'video/webm',
 };
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { token: string } }
-) {
+// Shared validation for GET and HEAD — resolves and checks the share token
+// and file path without touching the filesystem stream.
+async function resolveShareMedia(
+  params: { token: string }
+): Promise<Response | { filePath: string; mimeType: string; size: number }> {
   const token = params.token?.replace(/[^a-zA-Z0-9_-]/g, '');
   if (!token) return new Response('Not found', { status: 404 });
 
@@ -62,6 +63,40 @@ export async function GET(
   const ext = extname(filename).toLowerCase();
   const mimeType = MIME[ext] ?? 'application/octet-stream';
   const { size } = statSync(filePath);
+
+  return { filePath, mimeType, size };
+}
+
+// HEAD — Discord/iMessage/etc. link-preview scrapers send this before
+// fetching the body. It must NOT create a filesystem read stream: piping a
+// Node fs stream into a Response whose body Next.js then discards (as it
+// does for HEAD) throws "Controller is already closed" once the stream
+// emits data after the web-stream side has been closed.
+export async function HEAD(
+  _req: NextRequest,
+  { params }: { params: { token: string } }
+) {
+  const resolved = await resolveShareMedia(params);
+  if (resolved instanceof Response) return resolved;
+
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Content-Type': resolved.mimeType,
+      'Content-Length': String(resolved.size),
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=86400',
+    },
+  });
+}
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { token: string } }
+) {
+  const resolved = await resolveShareMedia(params);
+  if (resolved instanceof Response) return resolved;
+  const { filePath, mimeType, size } = resolved;
 
   const rangeHeader = req.headers.get('range');
 

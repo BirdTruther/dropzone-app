@@ -145,6 +145,7 @@ export default function GroupPage() {
   const [addResults, setAddResults] = useState<{ id: string; name: string; avatar?: string }[]>([]);
   const [addLoading, setAddLoading] = useState(false);
   const [addingMember, setAddingMember] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
 
   const loadPosts = useCallback(async () => {
     const res = await fetch(`/api/groups/${groupId}/posts`);
@@ -273,6 +274,27 @@ export default function GroupPage() {
     });
     if (res.ok) setMembers(prev => prev.filter(m => m.id !== targetId));
     setRemovingMember(null);
+  }
+
+  async function leaveGroup() {
+    const isSoleMember = isOwner && members.length <= 1;
+    const message = isSoleMember
+      ? 'You\'re the only member left — leaving will permanently delete this group and everything in it. Continue?'
+      : isOwner
+        ? 'Leaving will hand ownership to the next-longest member of this group. Continue?'
+        : 'Leave this group? You\'ll need a new invite to rejoin.';
+    if (!confirm(message)) return;
+
+    setLeaving(true);
+    const res = await fetch(`/api/groups/${groupId}/leave`, { method: 'POST' });
+    setLeaving(false);
+    if (res.ok) {
+      router.push('/groups');
+      router.refresh();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error ?? 'Failed to leave group');
+    }
   }
 
   async function searchUsers(q: string) {
@@ -598,6 +620,12 @@ export default function GroupPage() {
                   )}
                 </div>
               )}
+              <div style={{ borderTop: '1px solid var(--color-border)', marginTop: '0.5rem', paddingTop: '0.75rem' }}>
+                <button onClick={leaveGroup} disabled={leaving}
+                  style={{ width: '100%', fontSize: '0.8rem', padding: '0.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(224,92,92,0.3)', background: 'rgba(224,92,92,0.08)', color: 'var(--color-danger, #e05c5c)', cursor: 'pointer' }}>
+                  {leaving ? 'Leaving…' : isOwner && members.length <= 1 ? 'Delete Group' : 'Leave Group'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

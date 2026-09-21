@@ -9,10 +9,12 @@ import { join, sep } from 'path';
 import { Readable } from 'stream';
 import crypto from 'crypto';
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { token: string } }
-) {
+// Shared validation for GET and HEAD — resolves the share token and target
+// file without touching the filesystem stream. Returns an error Response,
+// a 'processing' marker if the download hasn't finished, or the file info.
+async function resolveShareVideo(
+  params: { token: string }
+): Promise<Response | { processing: true } | { filePath: string; size: number }> {
   const token = params.token?.replace(/[^a-zA-Z0-9_-]/g, '');
   if (!token) return new Response('Not found', { status: 404 });
 
@@ -60,13 +62,51 @@ export async function GET(
 
   if (!existsSync(filePath)) {
     // File doesn't exist yet — still processing
+    return { processing: true };
+  }
+
+  const { size } = statSync(filePath);
+  return { filePath, size };
+}
+
+// HEAD — link-preview scrapers send this before fetching the body. It must
+// NOT create a filesystem read stream: piping a Node fs stream into a
+// Response whose body Next.js then discards (as it does for HEAD) throws
+// "Controller is already closed" once the stream emits data after the
+// web-stream side has been closed.
+export async function HEAD(
+  _req: NextRequest,
+  { params }: { params: { token: string } }
+) {
+  const resolved = await resolveShareVideo(params);
+  if (resolved instanceof Response) return resolved;
+  if ('processing' in resolved) return new Response(null, { status: 202 });
+
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Content-Type': 'video/mp4',
+      'Content-Length': String(resolved.size),
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=86400',
+    },
+  });
+}
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { token: string } }
+) {
+  const resolved = await resolveShareVideo(params);
+  if (resolved instanceof Response) return resolved;
+  if ('processing' in resolved) {
     return new Response(JSON.stringify({ processing: true }), {
       status: 202,
       headers: { 'Content-Type': 'application/json' },
     });
   }
+  const { filePath, size } = resolved;
 
-  const { size } = statSync(filePath);
   const rangeHeader = req.headers.get('range');
 
   if (rangeHeader) {

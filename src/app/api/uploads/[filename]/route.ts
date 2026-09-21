@@ -16,11 +16,13 @@ const MIME: Record<string, string> = {
   '.webm': 'video/webm',
 };
 
-export async function GET(
+// Shared validation for GET and HEAD — resolves and checks the file path
+// without touching the filesystem stream. Returns either an error Response
+// or the resolved { filePath, mimeType, size }.
+async function resolveUpload(
   req: NextRequest,
-  { params }: { params: { filename: string } }
-) {
-  // --- Auth guard: uploads are private to logged-in users ---
+  params: { filename: string }
+): Promise<Response | { filePath: string; mimeType: string; size: number }> {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return new Response('Unauthorized', { status: 401 });
@@ -43,6 +45,40 @@ export async function GET(
   const ext = extname(filename).toLowerCase();
   const mimeType = MIME[ext] ?? 'application/octet-stream';
   const { size } = statSync(filePath);
+
+  return { filePath, mimeType, size };
+}
+
+// HEAD — browsers (and video elements) send this before streaming to check
+// Content-Length / range support. It must NOT create a filesystem read
+// stream: piping a Node fs stream into a Response whose body Next.js then
+// discards (as it does for HEAD) throws "Controller is already closed"
+// once the stream emits data after the web-stream side has been closed.
+export async function HEAD(
+  req: NextRequest,
+  { params }: { params: { filename: string } }
+) {
+  const resolved = await resolveUpload(req, params);
+  if (resolved instanceof Response) return resolved;
+
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Content-Type': resolved.mimeType,
+      'Content-Length': String(resolved.size),
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'private, max-age=86400',
+    },
+  });
+}
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { filename: string } }
+) {
+  const resolved = await resolveUpload(req, params);
+  if (resolved instanceof Response) return resolved;
+  const { filePath, mimeType, size } = resolved;
 
   const rangeHeader = req.headers.get('range');
 

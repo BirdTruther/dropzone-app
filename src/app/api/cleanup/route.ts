@@ -8,8 +8,12 @@ import { join } from 'path';
 // a post was manually given an expiry date.
 // e.g. GET https://localhost:8742/api/cleanup?secret=YOUR_SECRET
 export async function GET(req: NextRequest) {
+  if (!process.env.CLEANUP_SECRET) {
+    return NextResponse.json({ error: 'CLEANUP_SECRET is not configured' }, { status: 500 });
+  }
+
   const secret = req.nextUrl.searchParams.get('secret');
-  if (secret !== (process.env.CLEANUP_SECRET ?? 'dropzone-cleanup')) {
+  if (secret !== process.env.CLEANUP_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
