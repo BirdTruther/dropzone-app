@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.98 - September 21, 2026
+- Rotated NextAuth, internal API, and VAPID push secrets
+- Fixed push notifications silently breaking forever after a VAPID key rotation — devices with a stale subscription now detect the mismatch and silently re-subscribe instead of failing every send with no cleanup
+- Added a one-time dismissible banner for existing push users confirming the automatic re-activation
+
 ## v0.97 - September 20, 2026
 - Leave Group — members can now leave a group themselves; an owner leaving hands ownership to the next-longest member, or deletes the group if they're the last one in it
 - Fixed a server error on video/media HEAD requests that was spamming logs and occasionally breaking Discord/iMessage link previews

@@ -14,6 +14,20 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return output;
 }
 
+// Detects a subscription created under a since-rotated VAPID keypair. The
+// browser reports the old subscription as "existing" regardless — it has no
+// way to know the server's key changed — so without this check a rotated
+// VAPID key permanently orphans every previously-subscribed device.
+function subscriptionKeyMatches(existing: PushSubscription, currentKey: Uint8Array): boolean {
+  const existingKey = existing.options.applicationServerKey;
+  if (!existingKey) return false;
+  const existingBytes = new Uint8Array(existingKey);
+  if (existingBytes.length !== currentKey.length) return false;
+  return existingBytes.every((byte, i) => byte === currentKey[i]);
+}
+
+export const PUSH_MIGRATION_FLAG = 'dz_push_migrated';
+
 /**
  * PushInit — mounts invisibly inside <Providers>.
  *
@@ -58,10 +72,22 @@ export default function PushInit() {
         console.log('[PushInit] SW ready');
         if (cancelled) return;
 
+        const currentKeyBytes = urlBase64ToUint8Array(vapidKey);
         const existing = await reg.pushManager.getSubscription();
         if (existing) {
-          console.log('[PushInit] Existing subscription found, skipping');
-          return;
+          if (subscriptionKeyMatches(existing, currentKeyBytes)) {
+            console.log('[PushInit] Existing subscription found, skipping');
+            return;
+          }
+          // Stale subscription from a rotated VAPID key — the browser can't
+          // detect this itself, so tear it down and re-subscribe under the
+          // current key. Permission is already granted at this point, so
+          // this happens silently with no re-prompt.
+          console.log('[PushInit] Existing subscription uses an outdated VAPID key, migrating…');
+          await existing.unsubscribe();
+          try {
+            localStorage.setItem(PUSH_MIGRATION_FLAG, '1');
+          } catch { /* private browsing / storage disabled — non-fatal */ }
         }
 
         if (Notification.permission === 'denied') {
@@ -76,7 +102,7 @@ export default function PushInit() {
 
         const sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+          applicationServerKey: currentKeyBytes,
         });
         console.log('[PushInit] Subscribed:', sub.endpoint);
         if (cancelled) return;

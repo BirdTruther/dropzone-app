@@ -37,14 +37,17 @@ export async function sendPushToUser(
         );
       } catch (err: unknown) {
         // 410 Gone = expired/revoked; 404 = not found — both mean the subscription
-        // is gone on the browser side and should be purged from the DB.
+        // is gone on the browser side. 401/403 = VAPID signature rejected, which
+        // happens when the subscription was created under a since-rotated VAPID
+        // keypair — permanently unusable with our current keys either way. All
+        // four mean the row should be purged so the client re-subscribes clean.
         if (
           typeof err === 'object' &&
           err !== null &&
           'statusCode' in err
         ) {
           const { statusCode } = err as { statusCode: number };
-          if (statusCode === 410 || statusCode === 404) {
+          if (statusCode === 410 || statusCode === 404 || statusCode === 401 || statusCode === 403) {
             console.log(`[sendPush] Cleaning up stale subscription (HTTP ${statusCode}) for user ${userId}, endpoint: ${sub.endpoint.slice(0, 40)}…`);
             await prisma.pushSubscription.deleteMany({
               where: { endpoint: sub.endpoint },
