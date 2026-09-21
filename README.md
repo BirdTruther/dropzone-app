@@ -4,7 +4,9 @@
 
 <h1 align="center">dropzone</h1>
 
-<p align="center">A private group link-sharing web app. Share links, videos, and images with friends — get rich previews, react to posts, comment on drops, and keep your feed alive indefinitely.</p>
+<p align="center">A private group link-sharing web app. Share links, videos, and images with friends, get rich previews, react to posts, comment on drops, and keep your feed alive indefinitely.</p>
+
+<p align="center"><strong><a href="https://link.birdsserver.cfd">🔗 Try it live</a></strong>. Signup is free and open, no invite needed.</p>
 
 ---
 
