@@ -408,7 +408,7 @@ This project is licensed under the [Business Source License 1.1](./LICENSE).
 
 ## AI Disclosure
 
-The concept, product direction, naming, and the Dropzone logo are mine (**BirdTruther**). I wrote an initial baseline version of the app myself, but it didn't work — from there, essentially all of the actual codebase (architecture, API routes, database schema, debugging, and ongoing feature work) has been built with AI doing the backend work:
+The concept, product direction, naming, and the Dropzone logo are mine (**BirdTruther**). I wrote the initial version myself; it didn't work the way I wanted, so I used AI coding tools to fix it and build out features, with me directing, testing, and adding features along the way:
 
 - Early development: **Perplexity AI**, using its Claude (Sonnet) access
 - Current development: **Claude Code**, Anthropic's CLI agent

@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.99 - October 25, 2026
+- POV clip archiving — post a povshare.cc link and Dropzone downloads it right away, so the clip survives POV's ~8 hour expiry
+- Archived POV clips are transcoded to standard MP4, so they play in browsers and embed in Discord even when the original file doesn't
+- POV clips now play in the group feed and on share links, just like Facebook videos
+
 ## v0.98 - September 21, 2026
 - Rotated NextAuth, internal API, and VAPID push secrets
 - Fixed push notifications silently breaking forever after a VAPID key rotation — devices with a stale subscription now detect the mismatch and silently re-subscribe instead of failing every send with no cleanup
