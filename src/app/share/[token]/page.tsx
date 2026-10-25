@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { timeAgo, isoDate, fullDate } from '@/lib/timeAgo';
+import { povCacheFilename } from '@/lib/pov';
 
 const BASE_URL = process.env.NEXTAUTH_URL ?? 'https://link.birdsserver.cfd';
 
@@ -39,7 +40,7 @@ export async function generateMetadata({ params }: { params: { token: string } }
 
   const isUploadedVideo = post.uploadType === 'video' && post.uploadUrl;
   const isImage = post.uploadType === 'image' && post.uploadUrl;
-  const isFbVideo = isFacebookUrl(post.url);
+  const isFbVideo = isFacebookUrl(post.url) || !!povCacheFilename(post.url);
   const title = post.note ?? post.title ?? `${post.author.name} dropped something`;
   const description = post.description ?? `Shared via dropzone`;
 
@@ -99,13 +100,16 @@ export default async function SharePage({ params }: { params: { token: string } 
 
   const isUploadedVideo = post.uploadType === 'video' && post.uploadUrl;
   const isImage = post.uploadType === 'image' && post.uploadUrl;
-  const isFbVideo = isFacebookUrl(post.url);
+  const isFbVideo = isFacebookUrl(post.url) || !!povCacheFilename(post.url);
 
-  // For Facebook videos, check if the file has already been downloaded
+  // For Facebook / POV videos, check if the file has already been downloaded
   let fbVideoReady = false;
   if (isFbVideo && post.url) {
-    const hash = crypto.createHash('sha256').update(post.url).digest('hex').slice(0, 16);
-    const filePath = path.join(process.cwd(), 'public', 'uploads', `fb_${hash}.mp4`);
+    const povFilename = povCacheFilename(post.url);
+    const fileName = povFilename
+      ? povFilename
+      : `fb_${crypto.createHash('sha256').update(post.url).digest('hex').slice(0, 16)}.mp4`;
+    const filePath = path.join(process.cwd(), 'public', 'uploads', fileName);
     fbVideoReady = existsSync(filePath);
   }
 

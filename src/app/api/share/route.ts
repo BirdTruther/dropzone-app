@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { existsSync } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { povCacheFilename } from '@/lib/pov';
 
 const FACEBOOK_HOSTS = ['facebook.com', 'm.facebook.com', 'fb.watch'];
 
@@ -63,6 +64,27 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({ url: post.url }),
       }).catch((err) => {
         console.error('[share] background Facebook pre-download failed:', err);
+      });
+    }
+  }
+
+  // Same for POV, with one extra reason to start it here too: if the
+  // post was created before this feature existed, the share link is
+  // the last chance to archive the clip before its ~8 hour expiry.
+  const povFilename = post.url ? povCacheFilename(post.url) : null;
+  if (povFilename) {
+    const outPath = path.join(process.cwd(), 'public', 'uploads', povFilename);
+    if (!existsSync(outPath)) {
+      const baseUrl = process.env.NEXTAUTH_URL ?? 'http://localhost:3000';
+      fetch(`${baseUrl}/api/fetch-pov`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': process.env.INTERNAL_API_SECRET ?? '',
+        },
+        body: JSON.stringify({ url: post.url }),
+      }).catch((err) => {
+        console.error('[share] background POV pre-download failed:', err);
       });
     }
   }

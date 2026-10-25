@@ -1,4 +1,4 @@
-export type EmbedType = 'youtube' | 'tiktok' | 'spotify' | 'twitter' | 'twitch' | 'facebook-video' | 'none';
+export type EmbedType = 'youtube' | 'tiktok' | 'spotify' | 'twitter' | 'twitch' | 'facebook-video' | 'pov-video' | 'none';
 
 export interface EmbedInfo {
   type: EmbedType;
@@ -82,6 +82,15 @@ export function getEmbed(url: string, hostname?: string): EmbedInfo {
           type: 'twitch',
           embedUrl: `https://player.twitch.tv/?channel=${channelMatch[1]}&parent=${parent}&autoplay=false`,
         };
+      }
+    }
+
+    // POV — signal for server-side download + transcode, no iframe.
+    // /c/<id> share pages and /v/<id>.mp4 direct files both map to the
+    // same archived clip (see src/lib/pov.ts).
+    if (host === 'povshare.cc') {
+      if (u.pathname.startsWith('/c/') || u.pathname.startsWith('/v/')) {
+        return { type: 'pov-video', originalUrl: url };
       }
     }
 

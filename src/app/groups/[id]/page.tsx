@@ -338,11 +338,15 @@ export default function GroupPage() {
       setUrl('');
       setNote('');
 
-      // If it's a Facebook video, kick off the background download immediately
-      // so the video is cached and ready by the time anyone tries to watch it.
+      // If it's a Facebook or POV video, kick off the background download
+      // immediately so the video is cached and ready by the time anyone
+      // tries to watch it. For POV this timing matters: the original
+      // link expires after ~8 hours, so archiving must start on post,
+      // not when someone first opens the share link.
       const embed = getEmbed(trimmedUrl);
-      if (embed.type === 'facebook-video') {
-        fetch('/api/fetch-facebook', {
+      if (embed.type === 'facebook-video' || embed.type === 'pov-video') {
+        const apiPath = embed.type === 'pov-video' ? '/api/fetch-pov' : '/api/fetch-facebook';
+        fetch(apiPath, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: trimmedUrl }),

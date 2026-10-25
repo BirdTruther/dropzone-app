@@ -80,7 +80,7 @@ const MAX_POLLS = 75;
 const MAX_HEAD_RETRIES = 5;
 const HEAD_RETRY_DELAY = 800;
 
-function FacebookVideoEmbed({ url }: { url: string }) {
+function ArchivedVideoEmbed({ url, apiPath, sourceLabel }: { url: string; apiPath: string; sourceLabel: string }) {
   const stateRef = useRef<FBState>('checking');
   const [displayState, setDisplayState] = useState<FBState>('checking');
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -143,12 +143,12 @@ function FacebookVideoEmbed({ url }: { url: string }) {
 
     if (pollCount.current >= MAX_POLLS) {
       setFBState('error');
-      setErrorMsg('Video is taking too long to process. Try opening it on Facebook directly.');
+      setErrorMsg(`Video is taking too long to process. Try opening it on ${sourceLabel} directly.`);
       return;
     }
     pollCount.current += 1;
 
-    fetch(`/api/fetch-facebook?url=${encodeURIComponent(url)}`)
+    fetch(`${apiPath}?url=${encodeURIComponent(url)}`)
       .then(r => r.json())
       .then((data: any) => {
         if (data.status === 'ready' && data.url) {
@@ -161,7 +161,7 @@ function FacebookVideoEmbed({ url }: { url: string }) {
         } else if (data.status === 'not_started') {
           if (!postFired.current) {
             postFired.current = true;
-            fetch('/api/fetch-facebook', {
+            fetch(apiPath, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ url }),
@@ -196,7 +196,7 @@ function FacebookVideoEmbed({ url }: { url: string }) {
     setVideoUrl(null);
     setFBState('checking');
     if (pollTimer.current) clearTimeout(pollTimer.current);
-    fetch('/api/fetch-facebook', {
+    fetch(apiPath, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
@@ -211,7 +211,7 @@ function FacebookVideoEmbed({ url }: { url: string }) {
           style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: '0.875rem', color: 'var(--color-text)', textDecoration: 'none' }}>
           <span style={{ fontSize: '1.3rem' }}>📹</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600 }}>View on Facebook ↗</div>
+            <div style={{ fontWeight: 600 }}>View on {sourceLabel} ↗</div>
             {errorMsg && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 2 }}>{errorMsg}</div>}
           </div>
         </a>
@@ -245,7 +245,7 @@ function FacebookVideoEmbed({ url }: { url: string }) {
           style={{ opacity: 0.5, animation: 'fbSpin 1.2s linear infinite' }}>
           <circle cx="12" cy="12" r="10" strokeDasharray="40 20" />
         </svg>
-        {displayState === 'checking' ? 'Loading…' : 'Preparing Facebook video…'}
+        {displayState === 'checking' ? 'Loading…' : `Preparing ${sourceLabel} video…`}
         <style>{`@keyframes fbSpin { to { transform: rotate(360deg); } }`}</style>
       </div>
     </div>
@@ -305,7 +305,8 @@ export default function PostEmbed({ url }: Props) {
 
   if (embed.type === 'none') return null;
   if (embed.type === 'tiktok') return <TikTokEmbed url={url} />;
-  if (embed.type === 'facebook-video') return <FacebookVideoEmbed url={url} />;
+  if (embed.type === 'facebook-video') return <ArchivedVideoEmbed url={url} apiPath="/api/fetch-facebook" sourceLabel="Facebook" />;
+  if (embed.type === 'pov-video') return <ArchivedVideoEmbed url={url} apiPath="/api/fetch-pov" sourceLabel="POV" />;
 
   if (embed.type === 'twitter') {
     return (

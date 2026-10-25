@@ -1,13 +1,14 @@
 // Public token-gated video streaming route.
 // Validates the share token (no session required) and streams the
-// associated Facebook-downloaded mp4 so unauthenticated share page
-// visitors can play the video.
+// associated Facebook- or POV-downloaded mp4 so unauthenticated share
+// page visitors can play the video.
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { existsSync, statSync, createReadStream } from 'fs';
 import { join, sep } from 'path';
 import { Readable } from 'stream';
 import crypto from 'crypto';
+import { povCacheFilename } from '@/lib/pov';
 
 // Shared validation for GET and HEAD — resolves the share token and target
 // file without touching the filesystem stream. Returns an error Response,
@@ -33,6 +34,7 @@ async function resolveShareVideo(
 
   // Determine the file to stream:
   // - Facebook videos are stored as fb_<hash>.mp4 derived from the post URL
+  // - POV videos are stored as pov_<hash>.mp4 derived from the canonical /v/ URL
   // - Uploaded videos use uploadUrl directly
   let filename: string | null = null;
 
@@ -47,6 +49,8 @@ async function resolveShareVideo(
   if (isFacebook && post.url) {
     const hash = crypto.createHash('sha256').update(post.url).digest('hex').slice(0, 16);
     filename = `fb_${hash}.mp4`;
+  } else if (post.url && povCacheFilename(post.url)) {
+    filename = povCacheFilename(post.url);
   } else if (post.uploadType === 'video' && post.uploadUrl) {
     filename = post.uploadUrl.split('/').pop() ?? null;
   }
