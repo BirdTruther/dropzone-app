@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { existsSync, mkdirSync, statSync, unlinkSync, createWriteStream } from 'fs';
+import { existsSync, mkdirSync, statSync, unlinkSync, renameSync, createWriteStream } from 'fs';
 import { Readable } from 'stream';
 import { finished } from 'stream/promises';
 import path from 'path';
@@ -39,6 +39,9 @@ function getHashedPaths(povUrl: string) {
     uploadsDir,
     outPath: path.join(uploadsDir, filename),
     tmpPath: path.join(uploadsDir, `${filename}.tmp`),
+    // ffmpeg writes here and it's renamed to outPath only once complete, so
+    // nothing ever serves a half-written mp4 (no moov atom yet).
+    partPath: path.join(uploadsDir, `${filename}.part`),
     // Keep serving via the API route so it stays behind auth.
     publicPath: `/api/uploads/${filename}`,
     filename,
@@ -113,7 +116,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not a POV clip URL' }, { status: 400 });
   }
 
-  const { uploadsDir, outPath, tmpPath, publicPath, filename } = getHashedPaths(povUrl);
+  const { uploadsDir, outPath, tmpPath, partPath, publicPath, filename } = getHashedPaths(povUrl);
   if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
 
   if (existsSync(outPath)) {
@@ -128,8 +131,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: 'pending' }, { status: 202 });
   }
 
-  if (existsSync(tmpPath)) {
-    try { unlinkSync(tmpPath); } catch { /* ignore */ }
+  for (const f of [tmpPath, partPath]) {
+    if (existsSync(f)) try { unlinkSync(f); } catch { /* ignore */ }
   }
 
   inProgress.add(filename);
@@ -191,23 +194,25 @@ export async function POST(req: NextRequest) {
       '-acodec', 'aac',
       '-b:a', '128k',
       '-movflags', '+faststart',
-      outPath,
+      '-f', 'mp4',
+      partPath,
     ], { timeout: 300_000 });
 
     try { unlinkSync(tmpPath); } catch { /* ignore */ }
 
-    if (!existsSync(outPath) || statSync(outPath).size < MIN_VALID_BYTES || !await isValidVideo(outPath)) {
-      if (existsSync(outPath)) unlinkSync(outPath);
+    if (!existsSync(partPath) || statSync(partPath).size < MIN_VALID_BYTES || !await isValidVideo(partPath)) {
+      if (existsSync(partPath)) unlinkSync(partPath);
       return NextResponse.json(
         { error: 'Video processing failed. Please try again.' },
         { status: 422 }
       );
     }
 
+    renameSync(partPath, outPath);
     return NextResponse.json({ url: publicPath });
 
   } catch (err: any) {
-    for (const f of [tmpPath, outPath]) {
+    for (const f of [tmpPath, partPath]) {
       if (existsSync(f)) try { unlinkSync(f); } catch { /* ignore */ }
     }
     console.error('[fetch-pov] error:', err?.message ?? err);

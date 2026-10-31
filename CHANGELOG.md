@@ -1,5 +1,8 @@
 # Changelog
 
+## v0.99.1 - October 31, 2026
+- Fixed POV clips failing to play ("No video with supported format and MIME type found") and not embedding in Discord when viewed or scraped while the clip was still being transcoded — the file is now only served once it's fully written
+
 ## v0.99 - October 25, 2026
 - POV clip archiving — post a povshare.cc link and Dropzone downloads it right away, so the clip survives POV's ~8 hour expiry
 - Archived POV clips are transcoded to standard MP4, so they play in browsers and embed in Discord even when the original file doesn't
