@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.99.2 - October 31, 2026
+- Public share pages now show the original POV / Facebook link (like the logged-in feed does) with a "View original on POV ↗" link
+- POV share pages no longer imply the Dropzone copy expires — the "· expires in X" text from POV's page is stripped from the displayed description, with a note that the original POV link expires after ~8h but the Dropzone backup is kept indefinitely
+
 ## v0.99.1 - October 31, 2026
 - Fixed POV clips failing to play ("No video with supported format and MIME type found") and not embedding in Discord when viewed or scraped while the clip was still being transcoded — the file is now only served once it's fully written
 

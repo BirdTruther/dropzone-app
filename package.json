@@ -1,6 +1,6 @@
 {
   "name": "dropzone-app",
-  "version": "0.99.1",
+  "version": "0.99.2",
   "private": true,
   "scripts": {
     "dev": "next dev",

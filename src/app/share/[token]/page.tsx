@@ -101,6 +101,20 @@ export default async function SharePage({ params }: { params: { token: string } 
   const isUploadedVideo = post.uploadType === 'video' && post.uploadUrl;
   const isImage = post.uploadType === 'image' && post.uploadUrl;
   const isFbVideo = isFacebookUrl(post.url) || !!povCacheFilename(post.url);
+  const isPov = !!post.url && !!povCacheFilename(post.url);
+  const sourceLabel = isPov ? 'POV' : 'Facebook';
+
+  // Clean POV OG descriptions like "Bird Truther · Arma Reforger · Shared with POV · expires in 7h 48m"
+  // so the share page doesn't imply the Dropzone copy expires. The original POV link expiry
+  // is explained separately below.
+  const displayDescription = (() => {
+    if (!post.description) return null;
+    if (isPov) {
+      const cleaned = post.description.replace(/\s*[·•]\s*expires in [^·]*$/i, '').trim();
+      return cleaned || null;
+    }
+    return post.description;
+  })();
 
   // For Facebook / POV videos, check if the file has already been downloaded
   let fbVideoReady = false;
@@ -195,9 +209,22 @@ export default async function SharePage({ params }: { params: { token: string } 
 
             {post.note && <p style={{ fontSize: '0.95rem', color: '#fff', marginBottom: '0.5rem' }}>{post.note}</p>}
             {post.title && !post.note && <p style={{ fontWeight: 600, fontSize: '0.95rem', color: '#fff', marginBottom: '0.25rem' }}>{post.title}</p>}
-            {post.description && <p style={{ fontSize: '0.82rem', color: '#888', marginBottom: '0.5rem' }}>{post.description}</p>}
+            {displayDescription && <p style={{ fontSize: '0.82rem', color: '#888', marginBottom: '0.5rem' }}>{displayDescription}</p>}
             {post.url && !post.uploadUrl && !isFbVideo && (
               <a href={post.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.78rem', color: '#5b6af7', wordBreak: 'break-all' }}>{post.url}</a>
+            )}
+            {post.url && !post.uploadUrl && isFbVideo && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <a href={post.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.78rem', color: '#5b6af7', wordBreak: 'break-all' }}>
+                  View original on {sourceLabel} ↗
+                </a>
+                <p style={{ fontSize: '0.72rem', color: '#666', marginTop: '0.25rem', wordBreak: 'break-all' }}>{post.url}</p>
+                {isPov && (
+                  <p style={{ fontSize: '0.72rem', color: '#888', marginTop: '0.35rem' }}>
+                    Original POV links expire after ~8h — this Dropzone backup is kept indefinitely.
+                  </p>
+                )}
+              </div>
             )}
           </div>
         </div>
