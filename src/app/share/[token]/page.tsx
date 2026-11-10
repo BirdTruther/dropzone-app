@@ -20,6 +20,19 @@ function isFacebookUrl(url: string | null): boolean {
   } catch { return false; }
 }
 
+function isTikTokUrl(url: string | null): boolean {
+  if (!url) return false;
+  try {
+    const host = new URL(url).hostname.replace('www.', '');
+    return ['tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com', 'm.tiktok.com'].includes(host);
+  } catch { return false; }
+}
+
+function tiktokCacheFilename(url: string): string | null {
+  if (!isTikTokUrl(url)) return null;
+  return `tt_${crypto.createHash('sha256').update(url).digest('hex').slice(0, 16)}.mp4`;
+}
+
 async function getPost(token: string) {
   const share = await prisma.shareToken.findUnique({
     where: { token },
@@ -40,7 +53,7 @@ export async function generateMetadata({ params }: { params: { token: string } }
 
   const isUploadedVideo = post.uploadType === 'video' && post.uploadUrl;
   const isImage = post.uploadType === 'image' && post.uploadUrl;
-  const isFbVideo = isFacebookUrl(post.url) || !!povCacheFilename(post.url);
+  const isFbVideo = isFacebookUrl(post.url) || !!povCacheFilename(post.url) || isTikTokUrl(post.url);
   const title = post.note ?? post.title ?? `${post.author.name} dropped something`;
   const description = post.description ?? `Shared via dropzone`;
 
@@ -100,9 +113,10 @@ export default async function SharePage({ params }: { params: { token: string } 
 
   const isUploadedVideo = post.uploadType === 'video' && post.uploadUrl;
   const isImage = post.uploadType === 'image' && post.uploadUrl;
-  const isFbVideo = isFacebookUrl(post.url) || !!povCacheFilename(post.url);
+  const isFbVideo = isFacebookUrl(post.url) || !!povCacheFilename(post.url) || isTikTokUrl(post.url);
   const isPov = !!post.url && !!povCacheFilename(post.url);
-  const sourceLabel = isPov ? 'POV' : 'Facebook';
+  const isTikTok = !!post.url && isTikTokUrl(post.url);
+  const sourceLabel = isPov ? 'POV' : isTikTok ? 'TikTok' : 'Facebook';
 
   // Clean POV OG descriptions like "Bird Truther · Arma Reforger · Shared with POV · expires in 7h 48m"
   // so the share page doesn't imply the Dropzone copy expires. The original POV link expiry
@@ -116,12 +130,15 @@ export default async function SharePage({ params }: { params: { token: string } 
     return post.description;
   })();
 
-  // For Facebook / POV videos, check if the file has already been downloaded
+  // For Facebook / POV / TikTok videos, check if the file has already been downloaded
   let fbVideoReady = false;
   if (isFbVideo && post.url) {
     const povFilename = povCacheFilename(post.url);
+    const ttFilename = tiktokCacheFilename(post.url);
     const fileName = povFilename
       ? povFilename
+      : ttFilename
+      ? ttFilename
       : `fb_${crypto.createHash('sha256').update(post.url).digest('hex').slice(0, 16)}.mp4`;
     const filePath = path.join(process.cwd(), 'public', 'uploads', fileName);
     fbVideoReady = existsSync(filePath);
@@ -161,14 +178,14 @@ export default async function SharePage({ params }: { params: { token: string } 
             </video>
           )}
 
-          {/* Facebook video — ready to play */}
+          {/* Archived video — ready to play */}
           {isFbVideo && fbVideoReady && fbVideoUrl && (
             <video controls autoPlay={false} style={{ width: '100%', maxHeight: 400, background: '#000', display: 'block' }}>
               <source src={fbVideoUrl} type="video/mp4" />
             </video>
           )}
 
-          {/* Facebook video — still processing */}
+          {/* Archived video — still processing */}
           {isFbVideo && !fbVideoReady && (
             <div style={{ width: '100%', minHeight: 200, background: '#111', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
