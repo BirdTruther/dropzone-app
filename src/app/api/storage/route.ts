@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getUploadsSize, MAX_VOLUME_SIZE, formatBytes } from '@/lib/storage';
+import { getUploadsSize, MAX_VOLUME_SIZE, MAX_FILE_SIZE, formatBytes } from '@/lib/storage';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -17,5 +17,7 @@ export async function GET() {
     percent,
     usedFormatted: formatBytes(used),
     totalFormatted: formatBytes(total),
+    maxFileSize: MAX_FILE_SIZE,
+    maxFileSizeFormatted: formatBytes(MAX_FILE_SIZE),
   });
 }
