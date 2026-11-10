@@ -8,7 +8,7 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { MAX_FILE_SIZE, MAX_VOLUME_SIZE, getUploadsSize } from '@/lib/storage';
+import { MAX_FILE_SIZE, MAX_VOLUME_SIZE, getUploadsSize, formatBytes } from '@/lib/storage';
 import { notifyGroupMembers } from '@/lib/notifications';
 
 const execFileAsync = promisify(execFile);
@@ -153,7 +153,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   console.log(`[upload] file.name=${file.name} file.type=${file.type} file.size=${file.size} isAdmin=${isAdmin}`);
 
   if (!isAdmin && file.size > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: 'File too large (max 100MB)' }, { status: 400 });
+    return NextResponse.json({ error: `File too large (max ${formatBytes(MAX_FILE_SIZE)})` }, { status: 400 });
   }
 
   const isVideo = ALLOWED_VIDEO.includes(file.type);
@@ -166,7 +166,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!isAdmin) {
     const currentSize = await getUploadsSize();
     if (currentSize + file.size > MAX_VOLUME_SIZE) {
-      return NextResponse.json({ error: 'Storage is full. Please contact the admin.' }, { status: 507 });
+      return NextResponse.json({ error: `Storage is full (${formatBytes(currentSize)} / ${formatBytes(MAX_VOLUME_SIZE)}). Please contact the admin.` }, { status: 507 });
     }
   }
 
