@@ -66,7 +66,7 @@ function LinkPreviewFallback({ url, sourceLabel, preview, errorMsg, onRetry }: {
           <div style={{ padding: '0.7rem 0.9rem' }}>
             {preview!.siteName && <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{preview!.siteName}</p>}
             {preview!.title && <p style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{preview!.title}</p>}
-            {preview!.description && <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', overflow: 'hidden', display: '-webkit-box', WebKitLineClamp: 2, WebKitBoxOrient: 'vertical' }}>{preview!.description}</p>}
+            {preview!.description && <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{preview!.description}</p>}
             <p style={{ fontSize: '0.75rem', color: 'var(--color-accent)', marginTop: '0.35rem' }}>{url.slice(0, 60)}{url.length > 60 ? '...' : ''}</p>
           </div>
         </div>
