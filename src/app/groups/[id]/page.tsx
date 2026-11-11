@@ -338,14 +338,14 @@ export default function GroupPage() {
       setUrl('');
       setNote('');
 
-      // If it's a Facebook or POV video, kick off the background download
+      // If it's a Facebook, POV or TikTok video, kick off the background download
       // immediately so the video is cached and ready by the time anyone
       // tries to watch it. For POV this timing matters: the original
       // link expires after ~8 hours, so archiving must start on post,
       // not when someone first opens the share link.
       const embed = getEmbed(trimmedUrl);
-      if (embed.type === 'facebook-video' || embed.type === 'pov-video') {
-        const apiPath = embed.type === 'pov-video' ? '/api/fetch-pov' : '/api/fetch-facebook';
+      if (embed.type === 'facebook-video' || embed.type === 'pov-video' || embed.type === 'tiktok-video') {
+        const apiPath = embed.type === 'pov-video' ? '/api/fetch-pov' : embed.type === 'tiktok-video' ? '/api/fetch-tiktok' : '/api/fetch-facebook';
         fetch(apiPath, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -798,7 +798,7 @@ export default function GroupPage() {
                 )}
 
                 {!post.uploadUrl && post.url && (
-                  hasEmbed ? <PostEmbed url={post.url} /> : (
+                  hasEmbed ? <PostEmbed url={post.url} preview={{ title: post.title, description: post.description, image: post.image, siteName: post.siteName }} /> : (
                     <a href={post.url} target="_blank" rel="noopener noreferrer">
                       <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--color-surface-2)' }}>
                         {post.image && (

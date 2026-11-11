@@ -1,6 +1,6 @@
 // Public token-gated video streaming route.
 // Validates the share token (no session required) and streams the
-// associated Facebook- or POV-downloaded mp4 so unauthenticated share
+// associated Facebook-, POV- or TikTok-downloaded mp4 so unauthenticated share
 // page visitors can play the video.
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
@@ -35,6 +35,7 @@ async function resolveShareVideo(
   // Determine the file to stream:
   // - Facebook videos are stored as fb_<hash>.mp4 derived from the post URL
   // - POV videos are stored as pov_<hash>.mp4 derived from the canonical /v/ URL
+  // - TikTok videos are stored as tt_<hash>.mp4 derived from the post URL
   // - Uploaded videos use uploadUrl directly
   let filename: string | null = null;
 
@@ -46,9 +47,20 @@ async function resolveShareVideo(
     } catch { return false; }
   })();
 
+  const isTikTok = (() => {
+    if (!post.url) return false;
+    try {
+      const host = new URL(post.url).hostname.replace('www.', '');
+      return ['tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com', 'm.tiktok.com'].includes(host);
+    } catch { return false; }
+  })();
+
   if (isFacebook && post.url) {
     const hash = crypto.createHash('sha256').update(post.url).digest('hex').slice(0, 16);
     filename = `fb_${hash}.mp4`;
+  } else if (isTikTok && post.url) {
+    const hash = crypto.createHash('sha256').update(post.url).digest('hex').slice(0, 16);
+    filename = `tt_${hash}.mp4`;
   } else if (post.url && povCacheFilename(post.url)) {
     filename = povCacheFilename(post.url);
   } else if (post.uploadType === 'video' && post.uploadUrl) {

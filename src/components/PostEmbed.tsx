@@ -2,8 +2,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { getEmbed } from '@/lib/embed';
 
+export interface LinkPreview {
+  title?: string;
+  description?: string;
+  image?: string;
+  siteName?: string;
+}
+
 interface Props {
   url: string;
+  preview?: LinkPreview;
 }
 
 /** Returns true once the element is within 200px of the viewport. */
@@ -23,50 +31,53 @@ function useInView(ref: React.RefObject<HTMLElement | null>): boolean {
   return inView;
 }
 
-function TikTokEmbed({ url }: { url: string }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inView = useInView(containerRef);
-  const [videoId, setVideoId] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    if (!inView) return;
-    fetch(`/api/tiktok-oembed?url=${encodeURIComponent(url)}`)
-      .then(r => r.ok ? r.json() : Promise.reject())
-      .then(data => {
-        if (data.videoId) setVideoId(data.videoId);
-        else setFailed(true);
-      })
-      .catch(() => setFailed(true));
-  }, [inView, url]);
-
-  if (failed) {
+function LinkPreviewFallback({ url, sourceLabel, preview, errorMsg, onRetry }: {
+  url: string; sourceLabel: string; preview?: LinkPreview; errorMsg: string | null; onRetry: () => void;
+}) {
+  const hasPreview = !!(preview && (preview.title || preview.description || preview.image));
+  if (!hasPreview) {
     return (
-      <a href={url} target="_blank" rel="noopener noreferrer"
-        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: '0.875rem', color: 'var(--color-text)', marginBottom: '0.5rem', textDecoration: 'none' }}>
-        <span style={{ fontSize: '1.3rem' }}>🎵</span>
-        <span style={{ flex: 1 }}>View TikTok video ↗</span>
-      </a>
+      <div style={{ marginBottom: '0.5rem' }}>
+        <a href={url} target="_blank" rel="noopener noreferrer"
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: '0.875rem', color: 'var(--color-text)', textDecoration: 'none' }}>
+          <span style={{ fontSize: '1.3rem' }}>📹</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600 }}>View on {sourceLabel} ↗</div>
+            {errorMsg && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 2 }}>{errorMsg}</div>}
+          </div>
+        </a>
+        <button onClick={onRetry}
+          style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          ↻ Retry download
+        </button>
+      </div>
     );
   }
-
   return (
-    <div ref={containerRef} style={{ marginBottom: '0.5rem' }}>
-      {(!inView || !videoId) ? (
-        <div style={{ height: 560, borderRadius: 8, background: 'var(--color-surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-          {inView && !videoId ? 'Loading TikTok…' : ''}
+    <div style={{ marginBottom: '0.5rem' }}>
+      <a href={url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', color: 'var(--color-text)' }}>
+        <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--color-surface-2)' }}>
+          {preview!.image && (
+            <div style={{ position: 'relative', width: '100%', height: 180 }}>
+              <img src={preview!.image} alt={preview!.title ?? ''} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            </div>
+          )}
+          <div style={{ padding: '0.7rem 0.9rem' }}>
+            {preview!.siteName && <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginBottom: '0.2rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{preview!.siteName}</p>}
+            {preview!.title && <p style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.25rem' }}>{preview!.title}</p>}
+            {preview!.description && <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', overflow: 'hidden', display: '-webkit-box', WebKitLineClamp: 2, WebKitBoxOrient: 'vertical' }}>{preview!.description}</p>}
+            <p style={{ fontSize: '0.75rem', color: 'var(--color-accent)', marginTop: '0.35rem' }}>{url.slice(0, 60)}{url.length > 60 ? '...' : ''}</p>
+          </div>
         </div>
-      ) : (
-        <div style={{ position: 'relative', width: '100%', maxWidth: 340, margin: '0 auto', borderRadius: 12, overflow: 'hidden', background: '#000', aspectRatio: '9/16' }}>
-          <iframe
-            src={`https://www.tiktok.com/embed/v2/${videoId}?autoplay=0`}
-            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
-            allowFullScreen
-            allow="autoplay; encrypted-media"
-            title="TikTok video"
-          />
-        </div>
-      )}
+      </a>
+      <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.4rem' }}>
+        Couldn&apos;t archive this one — watch on {sourceLabel} ↗{errorMsg ? ` (${errorMsg})` : ''}
+      </p>
+      <button onClick={onRetry}
+        style={{ marginTop: '0.2rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+        ↻ Retry download
+      </button>
     </div>
   );
 }
@@ -80,7 +91,7 @@ const MAX_POLLS = 75;
 const MAX_HEAD_RETRIES = 5;
 const HEAD_RETRY_DELAY = 800;
 
-function ArchivedVideoEmbed({ url, apiPath, sourceLabel }: { url: string; apiPath: string; sourceLabel: string }) {
+function ArchivedVideoEmbed({ url, apiPath, sourceLabel, preview }: { url: string; apiPath: string; sourceLabel: string; preview?: LinkPreview }) {
   const stateRef = useRef<FBState>('checking');
   const [displayState, setDisplayState] = useState<FBState>('checking');
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -161,11 +172,32 @@ function ArchivedVideoEmbed({ url, apiPath, sourceLabel }: { url: string; apiPat
         } else if (data.status === 'not_started') {
           if (!postFired.current) {
             postFired.current = true;
+            // Fail fast: a 422 from the download POST means the video is
+            // blocked / login-only / deleted — don't spin for 5 minutes,
+            // show the link-preview fallback right away. A success returns
+            // { url } directly, a 202 returns { status: 'pending' }.
             fetch(apiPath, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ url }),
-            }).catch(() => {});
+            })
+              .then(r => r.json().catch(() => ({})))
+              .then((postData: any) => {
+                if (stateRef.current === 'error' || stateRef.current === 'ready') return;
+                if (postData?.url) {
+                  headRetries.current = 0;
+                  verifyAndShow(postData.url);
+                } else if (postData?.error) {
+                  setErrorMsg(postData.error);
+                  setFBState('error');
+                } else {
+                  setFBState('pending');
+                  scheduleNextPoll();
+                }
+              })
+              .catch(() => { setFBState('pending'); scheduleNextPoll(); });
+            setFBState('pending');
+            return;
           }
           setFBState('pending');
           scheduleNextPoll();
@@ -200,26 +232,25 @@ function ArchivedVideoEmbed({ url, apiPath, sourceLabel }: { url: string; apiPat
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
-    }).catch(() => {});
-    scheduleNextPoll(2000);
+    })
+      .then(r => r.json().catch(() => ({})))
+      .then((postData: any) => {
+        if (postData?.url) {
+          headRetries.current = 0;
+          verifyAndShow(postData.url);
+        } else if (postData?.error) {
+          setErrorMsg(postData.error);
+          setFBState('error');
+        } else {
+          scheduleNextPoll(2000);
+        }
+      })
+      .catch(() => scheduleNextPoll(2000));
   }
 
   if (displayState === 'error') {
     return (
-      <div style={{ marginBottom: '0.5rem' }}>
-        <a href={url} target="_blank" rel="noopener noreferrer"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-2)', fontSize: '0.875rem', color: 'var(--color-text)', textDecoration: 'none' }}>
-          <span style={{ fontSize: '1.3rem' }}>📹</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600 }}>View on {sourceLabel} ↗</div>
-            {errorMsg && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 2 }}>{errorMsg}</div>}
-          </div>
-        </a>
-        <button onClick={retryDownload}
-          style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-          ↻ Retry download
-        </button>
-      </div>
+      <LinkPreviewFallback url={url} sourceLabel={sourceLabel} preview={preview} errorMsg={errorMsg} onRetry={retryDownload} />
     );
   }
 
@@ -281,7 +312,7 @@ function LazyIframe({
   );
 }
 
-export default function PostEmbed({ url }: Props) {
+export default function PostEmbed({ url, preview }: Props) {
   const embed = getEmbed(url);
   const twitterRef = useRef<HTMLDivElement>(null);
   const twitterInView = useInView(twitterRef);
@@ -304,9 +335,9 @@ export default function PostEmbed({ url }: Props) {
   }, [embed.type, twitterInView, url]);
 
   if (embed.type === 'none') return null;
-  if (embed.type === 'tiktok') return <TikTokEmbed url={url} />;
-  if (embed.type === 'facebook-video') return <ArchivedVideoEmbed url={url} apiPath="/api/fetch-facebook" sourceLabel="Facebook" />;
-  if (embed.type === 'pov-video') return <ArchivedVideoEmbed url={url} apiPath="/api/fetch-pov" sourceLabel="POV" />;
+  if (embed.type === 'tiktok-video') return <ArchivedVideoEmbed url={url} apiPath="/api/fetch-tiktok" sourceLabel="TikTok" preview={preview} />;
+  if (embed.type === 'facebook-video') return <ArchivedVideoEmbed url={url} apiPath="/api/fetch-facebook" sourceLabel="Facebook" preview={preview} />;
+  if (embed.type === 'pov-video') return <ArchivedVideoEmbed url={url} apiPath="/api/fetch-pov" sourceLabel="POV" preview={preview} />;
 
   if (embed.type === 'twitter') {
     return (

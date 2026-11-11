@@ -1,4 +1,4 @@
-export type EmbedType = 'youtube' | 'tiktok' | 'spotify' | 'twitter' | 'twitch' | 'facebook-video' | 'pov-video' | 'none';
+export type EmbedType = 'youtube' | 'tiktok-video' | 'spotify' | 'twitter' | 'twitch' | 'facebook-video' | 'pov-video' | 'none';
 
 export interface EmbedInfo {
   type: EmbedType;
@@ -31,14 +31,16 @@ export function getEmbed(url: string, hostname?: string): EmbedInfo {
       }
     }
 
-    // TikTok — all formats handled via oEmbed API in PostEmbed component
+    // TikTok — signal for server-side yt-dlp download + transcode, no iframe.
+    // The old oEmbed + tiktok.com/embed iframe was rate-limited by TikTok
+    // (429 in the feed), so TikTok is archived like Facebook/POV instead.
     if (
       host === 'tiktok.com' ||
       host === 'vm.tiktok.com' ||
       host === 'vt.tiktok.com' ||
       host === 'm.tiktok.com'
     ) {
-      return { type: 'tiktok' };
+      return { type: 'tiktok-video', originalUrl: url };
     }
 
     // Spotify

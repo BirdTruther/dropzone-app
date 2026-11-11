@@ -59,7 +59,7 @@
 ## Features
 
 - 🔗 Link sharing with rich OG previews
-- 🎥 Video & image uploads (100MB max per file, 20GB total)
+- 🎥 Video & image uploads (100MB max per file, 20GB total — both configurable in `.env`)
 - 📦 GIF support
 - 🖼️ JPEG XR support — Windows HDR screenshots (`.jxr`) are automatically converted to PNG on upload
 - ♾️ Uploads kept indefinitely — no expiry
@@ -242,7 +242,7 @@ All configuration is handled via environment variables. Copy `.env.example` to `
 
 ## Storage & Uploads
 
-All uploaded files and downloaded Facebook videos are stored in a host directory bind-mounted into the container at `/app/public/uploads`.
+All uploaded files and downloaded Facebook / POV / TikTok videos are stored in a host directory bind-mounted into the container at `/app/public/uploads`.
 
 ### Cosmos Cloud deployment
 - **Host path:** `/DATA/AppData/dropzone/dropzone-app/uploads`
@@ -253,9 +253,11 @@ All uploaded files and downloaded Facebook videos are stored in a host directory
 - Persists across all restarts and rebuilds
 
 ### Limits & naming
-- **Max per file:** 100MB
-- **Total storage:** 20GB
-- Facebook videos are cached as `fb_<url-hash>.mp4`
+- **Max per file:** 100MB by default — set `MAX_UPLOAD_FILE_MB` in `.env` to change it
+- **Total storage:** 20GB by default — set `MAX_UPLOAD_TOTAL_GB` in `.env` to change it (restart / redeploy after changing either value)
+- Facebook videos are cached as `fb_<url-hash>.mp4`, POV clips as `pov_<url-hash>.mp4`, TikTok videos as `tt_<url-hash>.mp4`
+- Archived videos count toward the total storage, along with user uploads
+- The Admin panel (Stats tab) shows current usage, e.g. `10.2 GB / 20 GB`, and the max file size
 - User uploads use their original filename with a unique prefix
 
 ### Backup
@@ -277,6 +279,19 @@ Dropzone downloads and serves Facebook videos natively using `yt-dlp` and `ffmpe
 - Videos that require a Facebook login will show a clear error message
 
 > ⚠️ Only **fully public** Facebook videos can be downloaded. Videos behind a login wall, set to Friends Only, or from private groups will fail with an explanatory message.
+
+---
+
+## TikTok Video Embeds
+
+Dropzone downloads and serves TikTok videos natively using `yt-dlp` and `ffmpeg`, the same way it does Facebook videos — the old TikTok iframe embed was rate-limited by TikTok (429), so it is no longer used.
+
+- Paste any TikTok video URL — `tiktok.com`, `vm.tiktok.com`, `vt.tiktok.com`, or `m.tiktok.com` links all work
+- Videos are re-encoded to **H.264 + AAC** for guaranteed playback in all browsers
+- Once downloaded, videos are cached in the uploads directory and served instantly to all subsequent viewers
+- If a download is blocked, the post falls back to its link preview instead of showing an error — see the Facebook section for the same fallback
+
+> ⚠️ Only **fully public** TikTok videos can be downloaded. Private, age-gated, or login-only videos will fail with an explanatory message.
 
 ---
 

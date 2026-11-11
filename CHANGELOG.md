@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.99.3 - November 10, 2026
+- TikTok video archiving — post a TikTok link and Dropzone downloads it with yt-dlp and transcodes it to standard MP4, just like Facebook videos, instead of loading TikTok's embed iframe (which TikTok was rate-limiting with 429s). Works for tiktok.com, vm.tiktok.com, vt.tiktok.com, and m.tiktok.com links, and plays in the group feed and on share links
+- Better fallback when a video download is blocked — if Facebook, POV, or TikTok can't be downloaded (login-only, private, deleted, or rate-limited), the post now shows its link preview (thumbnail, title, and description) with a note and a manual retry, instead of spinning for up to 5 minutes and then showing only an error. A failed download now stops polling right away instead of retrying in a loop
+- Configurable upload storage — MAX_UPLOAD_FILE_MB (default 100) and MAX_UPLOAD_TOTAL_GB (default 20) in .env now control the per-file and total upload limits, instead of hard-coded values. The Admin panel shows the current usage and max file size. Archived Facebook / POV / TikTok videos count toward the total, along with user uploads
+
 ## v0.99.2 - October 31, 2026
 - Public share pages now show the original POV / Facebook link (like the logged-in feed does) with a "View original on POV ↗" link
 - POV share pages no longer imply the Dropzone copy expires — the "· expires in X" text from POV's page is stripped from the displayed description, with a note that the original POV link expires after ~8h but the Dropzone backup is kept indefinitely

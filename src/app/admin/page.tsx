@@ -25,6 +25,7 @@ interface StatsData {
 interface StorageData {
   used: number; total: number; percent: number;
   usedFormatted: string; totalFormatted: string;
+  maxFileSize?: number; maxFileSizeFormatted?: string;
 }
 
 function timeAgo(iso: string) {
@@ -277,7 +278,8 @@ export default function AdminPage() {
                       background: storage.percent > 80 ? 'var(--color-danger, #e05c5c)' : storage.percent > 50 ? '#f97316' : 'var(--color-accent, #5b6af7)',
                     }} />
                   </div>
-                  <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{storage.percent}% used</p>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{storage.percent}% used{storage.maxFileSizeFormatted ? ` • Max file ${storage.maxFileSizeFormatted}` : ''}</p>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Uploads and archived Facebook / POV / TikTok videos all count toward the total. Limits are set with MAX_UPLOAD_FILE_MB / MAX_UPLOAD_TOTAL_GB in .env.</p>
                 </div>
               )}
             </>
