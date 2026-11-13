@@ -97,6 +97,10 @@ function ReactionBreakdown({ reactions, onClose }: { reactions: Reaction[]; onCl
   );
 }
 
+// Feed page size (v0.99.4): the first page loads 25 posts; older pages of
+// 25 are appended as you scroll, instead of loading the whole group.
+const POSTS_PAGE_SIZE = 25;
+
 export default function GroupPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -109,6 +113,15 @@ export default function GroupPage() {
 
   const [group, setGroup] = useState<GroupData | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  // Feed pagination (v0.99.4): the feed used to fetch every post in the
+  // group on every load and every 15s refresh. Now it loads one page at a
+  // time (25 posts) and appends older pages as you scroll.
+  const [hasMorePosts, setHasMorePosts] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const nextCursorRef = useRef<{ before: string; beforeId: string } | null>(null);
+  const loadedCountRef = useRef(0);
+  const postsRef = useRef<Post[]>([]);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const [url, setUrl] = useState('');
   const [note, setNote] = useState('');
   const [posting, setPosting] = useState(false);
@@ -147,10 +160,47 @@ export default function GroupPage() {
   const [addingMember, setAddingMember] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
 
+  // Keep a ref mirror of posts so loadMore / refresh can compute from the
+  // latest list without stale closures.
+  useEffect(() => { postsRef.current = posts; }, [posts]);
+
+  // Refresh only what is currently loaded (first page on first load), never
+  // the whole group history. The API returns { posts, hasMore, nextCursor };
+  // a bare array is still accepted for backwards compatibility.
   const loadPosts = useCallback(async () => {
-    const res = await fetch(`/api/groups/${groupId}/posts`);
-    if (res.ok) setPosts(await res.json());
+    const limit = Math.max(POSTS_PAGE_SIZE, loadedCountRef.current);
+    const res = await fetch(`/api/groups/${groupId}/posts?limit=${limit}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const page: Post[] = Array.isArray(data) ? data : data.posts ?? [];
+    setPosts(page);
+    loadedCountRef.current = page.length;
+    nextCursorRef.current = Array.isArray(data) ? null : data.nextCursor ?? null;
+    setHasMorePosts(Array.isArray(data) ? false : data.hasMore ?? false);
   }, [groupId]);
+
+  // Append the next page of older posts (cursor-based, so a new post
+  // arriving at the top never shifts the page boundary and skips a post).
+  const loadMorePosts = useCallback(async () => {
+    if (loadingMore || !hasMorePosts) return;
+    const cursor = nextCursorRef.current;
+    if (!cursor) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/posts?limit=${POSTS_PAGE_SIZE}&before=${encodeURIComponent(cursor.before)}&beforeId=${encodeURIComponent(cursor.beforeId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const page: Post[] = Array.isArray(data) ? data : data.posts ?? [];
+      const seen = new Set(postsRef.current.map(p => p.id));
+      const fresh = page.filter(p => !seen.has(p.id));
+      loadedCountRef.current = postsRef.current.length + fresh.length;
+      setPosts(prev => [...prev, ...fresh]);
+      nextCursorRef.current = Array.isArray(data) ? null : data.nextCursor ?? null;
+      setHasMorePosts(Array.isArray(data) ? false : data.hasMore ?? false);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [groupId, loadingMore, hasMorePosts]);
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/login'); }, [status, router]);
 
@@ -163,11 +213,32 @@ export default function GroupPage() {
     loadPosts();
   }, [status, groupId, loadPosts, router]);
 
+  // 15s refresh, paused while the tab is hidden (v0.99.4). Refreshes once
+  // as soon as the tab is visible again.
   useEffect(() => {
     if (status !== 'authenticated') return;
-    const interval = setInterval(loadPosts, 15000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => { if (!document.hidden) loadPosts(); }, 15000);
+    const onVisible = () => { if (!document.hidden) loadPosts(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [status, loadPosts]);
+
+  // Infinite scroll: load the next page when the "Load more" sentinel comes
+  // near the viewport. The button below is the fallback if the observer
+  // never fires.
+  useEffect(() => {
+    const el = loadMoreRef.current;
+    if (!el || !hasMorePosts) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadMorePosts(); },
+      { rootMargin: '600px' }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasMorePosts, loadMorePosts]);
 
   // ── Clipboard paste handler ──────────────────────────────────────────────
   useEffect(() => {
@@ -335,6 +406,7 @@ export default function GroupPage() {
     if (res.ok) {
       const post = await res.json();
       setPosts(prev => [post, ...prev]);
+      loadedCountRef.current += 1;
       setUrl('');
       setNote('');
 
@@ -381,6 +453,7 @@ export default function GroupPage() {
         try {
           const post = JSON.parse(xhr.responseText);
           setPosts(prev => [post, ...prev]);
+          loadedCountRef.current += 1;
           setUploadFile(null);
           setNote('');
         } catch {
@@ -409,7 +482,10 @@ export default function GroupPage() {
     if (!confirm('Delete this post? This cannot be undone.')) return;
     setDeletingId(postId);
     const res = await fetch(`/api/posts/${postId}`, { method: 'DELETE' });
-    if (res.ok) setPosts(prev => prev.filter(p => p.id !== postId));
+    if (res.ok) {
+      setPosts(prev => prev.filter(p => p.id !== postId));
+      loadedCountRef.current = Math.max(0, loadedCountRef.current - 1);
+    }
     else { const d = await res.json(); alert(d.error ?? 'Could not delete post'); }
     setDeletingId(null);
   }
@@ -784,6 +860,8 @@ export default function GroupPage() {
                   <img
                     src={post.uploadUrl}
                     alt="uploaded"
+                    loading="lazy"
+                    decoding="async"
                     onClick={() => setLightboxSrc(post.uploadUrl!)}
                     style={{
                       width: '100%',
@@ -803,7 +881,7 @@ export default function GroupPage() {
                       <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--color-surface-2)' }}>
                         {post.image && (
                           <div style={{ position: 'relative', width: '100%', height: 180 }}>
-                            <Image src={post.image} alt={post.title ?? ''} fill style={{ objectFit: 'cover' }} unoptimized />
+                            <Image src={post.image} alt={post.title ?? ''} fill loading="lazy" style={{ objectFit: 'cover' }} unoptimized />
                           </div>
                         )}
                         <div style={{ padding: '0.7rem 0.9rem' }}>
@@ -856,6 +934,14 @@ export default function GroupPage() {
               </div>
             );
           })}
+          {hasMorePosts && (
+            <div ref={loadMoreRef} style={{ textAlign: 'center', padding: '1rem 0 0.5rem' }}>
+              <button onClick={loadMorePosts} disabled={loadingMore}
+                style={{ background: 'var(--color-surface-2)', color: 'var(--color-text)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '0.6rem 1.25rem', fontSize: '0.875rem', fontWeight: 600, cursor: loadingMore ? 'wait' : 'pointer', opacity: loadingMore ? 0.6 : 1 }}>
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

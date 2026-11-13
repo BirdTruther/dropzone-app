@@ -14,8 +14,8 @@ interface Props {
   preview?: LinkPreview;
 }
 
-/** Returns true once the element is within 200px of the viewport. */
-function useInView(ref: React.RefObject<HTMLElement | null>): boolean {
+/** Returns true once the element is within rootMargin of the viewport. Sticky: once true it stays true. */
+function useInView(ref: React.RefObject<HTMLElement | null>, rootMargin = '200px'): boolean {
   const [inView, setInView] = useState(false);
   useEffect(() => {
     const el = ref.current;
@@ -23,11 +23,11 @@ function useInView(ref: React.RefObject<HTMLElement | null>): boolean {
     if (inView) return;
     const obs = new IntersectionObserver(
       ([entry]) => { if (entry.isIntersecting) { setInView(true); obs.disconnect(); } },
-      { rootMargin: '200px' }
+      { rootMargin }
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [ref, inView]);
+  }, [ref, inView, rootMargin]);
   return inView;
 }
 
@@ -60,7 +60,7 @@ function LinkPreviewFallback({ url, sourceLabel, preview, errorMsg, onRetry }: {
         <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--color-surface-2)' }}>
           {preview!.image && (
             <div style={{ position: 'relative', width: '100%', height: 180 }}>
-              <img src={preview!.image} alt={preview!.title ?? ''} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              <img src={preview!.image} alt={preview!.title ?? ''} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
             </div>
           )}
           <div style={{ padding: '0.7rem 0.9rem' }}>
@@ -85,11 +85,20 @@ function LinkPreviewFallback({ url, sourceLabel, preview, errorMsg, onRetry }: {
 // 'verifying' = poll said ready, HEAD-checking the file is fully servable
 type FBState = 'checking' | 'pending' | 'verifying' | 'ready' | 'error';
 
-const POLL_INTERVAL = 4000;
-const MAX_POLLS = 75;
+// Poll backoff (v0.99.4): check fast while a download is fresh, then slow
+// down — 3×4s + 3×10s + 3×30s ≈ 2 minutes total, then the link-preview
+// fallback. The old behaviour polled every 4s for up to 5 minutes.
+const POLL_DELAYS = [4000, 4000, 4000, 10000, 10000, 10000, 30000, 30000, 30000];
+const MAX_POLLS = POLL_DELAYS.length;
 // How many times to retry the HEAD check before giving up
 const MAX_HEAD_RETRIES = 5;
 const HEAD_RETRY_DELAY = 800;
+
+// How far ahead of the viewport a video starts its status check / download
+// trigger (v0.99.4): 1200px is roughly the next 2 posts, so the next video
+// is usually ready by the time you scroll to it — without polling every
+// video in the feed on page load.
+const VIDEO_PRELOAD_MARGIN = '1200px';
 
 function ArchivedVideoEmbed({ url, apiPath, sourceLabel, preview }: { url: string; apiPath: string; sourceLabel: string; preview?: LinkPreview }) {
   const stateRef = useRef<FBState>('checking');
@@ -100,15 +109,18 @@ function ArchivedVideoEmbed({ url, apiPath, sourceLabel, preview }: { url: strin
   const headRetries = useRef(0);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const postFired = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(containerRef, VIDEO_PRELOAD_MARGIN);
 
   function setFBState(s: FBState) {
     stateRef.current = s;
     setDisplayState(s);
   }
 
-  function scheduleNextPoll(delayMs = POLL_INTERVAL) {
+  function scheduleNextPoll(delayMs?: number) {
     if (pollTimer.current) clearTimeout(pollTimer.current);
-    pollTimer.current = setTimeout(doCheck, delayMs);
+    const delay = delayMs ?? POLL_DELAYS[Math.min(pollCount.current, POLL_DELAYS.length - 1)];
+    pollTimer.current = setTimeout(doCheck, delay);
   }
 
   /**
@@ -151,6 +163,9 @@ function ArchivedVideoEmbed({ url, apiPath, sourceLabel, preview }: { url: strin
   const doCheckRef = useRef<() => void>(() => {});
   doCheckRef.current = function doCheck() {
     if (stateRef.current === 'ready' || stateRef.current === 'error' || stateRef.current === 'verifying') return;
+    // Don't poll while the tab is hidden — the visibility listener below
+    // resumes the check as soon as the tab is visible again.
+    if (typeof document !== 'undefined' && document.hidden) return;
 
     if (pollCount.current >= MAX_POLLS) {
       setFBState('error');
@@ -213,12 +228,31 @@ function ArchivedVideoEmbed({ url, apiPath, sourceLabel, preview }: { url: strin
 
   function doCheck() { doCheckRef.current(); }
 
+  // Don't start the status check until the video is in / near view — the
+  // old code started polling every archived video in the feed on mount.
   useEffect(() => {
+    if (!inView) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
     const jitter = Math.random() * 800;
     pollTimer.current = setTimeout(doCheck, jitter);
     return () => { if (pollTimer.current) clearTimeout(pollTimer.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url]);
+  }, [inView, url]);
+
+  // Pause polling while the tab is hidden; resume shortly after it becomes
+  // visible again (only while still checking / pending).
+  useEffect(() => {
+    function onVisibility() {
+      if (document.hidden) {
+        if (pollTimer.current) clearTimeout(pollTimer.current);
+      } else if (stateRef.current === 'checking' || stateRef.current === 'pending') {
+        scheduleNextPoll(500);
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function retryDownload() {
     postFired.current = false;
@@ -246,6 +280,19 @@ function ArchivedVideoEmbed({ url, apiPath, sourceLabel, preview }: { url: strin
         }
       })
       .catch(() => scheduleNextPoll(2000));
+  }
+
+  // Not near the viewport yet: render a same-size placeholder and make no
+  // network requests at all. Once inView flips true it stays true, so the
+  // placeholder unmounting here never stops a check that already started.
+  if (!inView) {
+    return (
+      <div ref={containerRef} style={{ position: 'relative', paddingBottom: '56.25%', height: 0, borderRadius: 8, marginBottom: '0.5rem', background: 'var(--color-surface-2)', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)', fontSize: '0.82rem' }}>
+          Loading…
+        </div>
+      </div>
+    );
   }
 
   if (displayState === 'error') {

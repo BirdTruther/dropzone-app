@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.99.4 - November 12, 2026
+- Feed loads less at once — group feeds now load 25 posts at a time and append older posts as you scroll, instead of loading every post in the group on every load and every 15-second refresh
+- Archived Facebook / TikTok / POV videos only start checking once they're near the viewport (about 1200px ahead, roughly the next 2 posts), so the next video is usually ready when you scroll to it without polling every video in the feed on page load
+- Video status polling backs off (fast at first, then slower) and stops after about 2 minutes instead of 5, and all polling pauses while the tab is hidden
+- Feed images now lazy-load instead of all downloading at once
+
 ## v0.99.3 - November 10, 2026
 - TikTok video archiving — post a TikTok link and Dropzone downloads it with yt-dlp and transcodes it to standard MP4, just like Facebook videos, instead of loading TikTok's embed iframe (which TikTok was rate-limiting with 429s). Works for tiktok.com, vm.tiktok.com, vt.tiktok.com, and m.tiktok.com links, and plays in the group feed and on share links
 - Better fallback when a video download is blocked — if Facebook, POV, or TikTok can't be downloaded (login-only, private, deleted, or rate-limited), the post now shows its link preview (thumbnail, title, and description) with a note and a manual retry, instead of spinning for up to 5 minutes and then showing only an error. A failed download now stops polling right away instead of retrying in a loop

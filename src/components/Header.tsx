@@ -17,7 +17,9 @@ export default function Header() {
       .catch(() => {});
   }, [user]);
 
-  // Poll for unread notifications every 15s (matches group page activity refresh)
+  // Poll for unread notifications every 15s (matches group page activity refresh).
+  // Paused while the tab is hidden (v0.99.4) — a background tab was polling
+  // forever. Refreshes once as soon as the tab is visible again.
   useEffect(() => {
     if (!user) return;
     const fetchUnread = () =>
@@ -26,8 +28,13 @@ export default function Header() {
         .then(d => setUnread(d.unread ?? 0))
         .catch(() => {});
     fetchUnread();
-    const interval = setInterval(fetchUnread, 15000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => { if (!document.hidden) fetchUnread(); }, 15000);
+    const onVisible = () => { if (!document.hidden) fetchUnread(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [user]);
 
   // Listen for read events broadcast from the notifications page
