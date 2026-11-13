@@ -8,16 +8,38 @@ interface Props {
   uploadUrl: string;
 }
 
+/** Returns true once the element is within rootMargin of the viewport. Sticky: once true it stays true. */
+function useInView(ref: React.RefObject<HTMLElement | null>, rootMargin = '800px'): boolean {
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (inView) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setInView(true); obs.disconnect(); } },
+      { rootMargin }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [ref, inView, rootMargin]);
+  return inView;
+}
+
 /**
  * Renders an uploaded video with three states:
  *  - processing: animated bar + "Converting video…", polls status every 2.5s
  *  - error:      error message with link fallback
  *  - ready/null: normal <video> player
+ *
+ * The processing poll only runs while the video is in / near view
+ * (v0.99.4) — off-screen conversions no longer poll the server.
  */
 export default function UploadedVideo({ postId, groupId, initialStatus, uploadUrl }: Props) {
   const [status, setStatus] = useState<string | null>(initialStatus ?? null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [dots, setDots] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(containerRef);
 
   // Animated ellipsis while processing
   useEffect(() => {
@@ -26,14 +48,16 @@ export default function UploadedVideo({ postId, groupId, initialStatus, uploadUr
     return () => clearInterval(t);
   }, [status]);
 
-  // Poll until ready or error
+  // Poll until ready or error — only while in / near view, and never while
+  // the tab is hidden.
   useEffect(() => {
-    if (status !== 'processing') {
+    if (status !== 'processing' || !inView) {
       if (intervalRef.current) clearInterval(intervalRef.current);
       return;
     }
 
     intervalRef.current = setInterval(async () => {
+      if (document.hidden) return;
       try {
         const res = await fetch(`/api/groups/${groupId}/upload/status/${postId}`);
         if (!res.ok) return;
@@ -49,11 +73,11 @@ export default function UploadedVideo({ postId, groupId, initialStatus, uploadUr
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [status, postId, groupId]);
+  }, [status, postId, groupId, inView]);
 
   if (status === 'processing') {
     return (
-      <div style={{
+      <div ref={containerRef} style={{
         width: '100%',
         borderRadius: 8,
         marginBottom: '0.5rem',
@@ -91,7 +115,7 @@ export default function UploadedVideo({ postId, groupId, initialStatus, uploadUr
 
   if (status === 'error') {
     return (
-      <div style={{
+      <div ref={containerRef} style={{
         width: '100%',
         borderRadius: 8,
         marginBottom: '0.5rem',
@@ -112,13 +136,15 @@ export default function UploadedVideo({ postId, groupId, initialStatus, uploadUr
 
   // ready or legacy null — render normal player
   return (
-    <video
-      controls
-      playsInline
-      preload="metadata"
-      style={{ width: '100%', borderRadius: 8, marginBottom: '0.5rem', maxHeight: 400, background: '#000' }}
-    >
-      <source src={uploadUrl} type="video/mp4" />
-    </video>
+    <div ref={containerRef}>
+      <video
+        controls
+        playsInline
+        preload="metadata"
+        style={{ width: '100%', borderRadius: 8, marginBottom: '0.5rem', maxHeight: 400, background: '#000' }}
+      >
+        <source src={uploadUrl} type="video/mp4" />
+      </video>
+    </div>
   );
 }
